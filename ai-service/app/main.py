@@ -37,9 +37,11 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
 
     # Contexto business
+    from app.business.api.auth import router as auth_router
     from app.business.api.leads import router as leads_router
 
     app.include_router(leads_router)
+    app.include_router(auth_router, prefix="/auth")
 
     # Contexto ai — contrato stateless /ai/* (DEC-ORB-021)
     from app.ai.api.qualify import router as ai_qualify_router

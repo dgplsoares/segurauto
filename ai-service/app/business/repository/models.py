@@ -45,3 +45,35 @@ class OutboxRow(Base):
     payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuthSessionRow(Base):
+    """Sessão autenticada (DEC-ORB-037): `token_hash` = sha256 do token (nunca o cru) → `lead_id`."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = {"schema": "business"}
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    lead_id: Mapped[str] = mapped_column(String(36), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)  # idle (sliding)
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OtpCodeRow(Base):
+    """OTP (DEC-ORB-037): `code_hash` = HMAC(pepper, email:code). Tentativa errada incrementa `attempts` +
+    `last_attempt_at` (cooldown), mas **não consome** (`consumed_at`) — anti-lockout."""
+
+    __tablename__ = "otp_codes"
+    __table_args__ = {"schema": "business"}
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

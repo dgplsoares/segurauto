@@ -43,3 +43,10 @@ class AdsPort(Protocol):
     async def send_conversion(
         self, *, event_id: str, lead_id: str, value: float | None = None
     ) -> ConversionResult: ...
+
+
+@runtime_checkable
+class NotificationPort(Protocol):
+    """Envio de notificações (OTP na V1; email/WhatsApp/SMS na F6). Fake default / real pós-V1."""
+
+    async def send_otp(self, *, email: str, code: str) -> None: ...

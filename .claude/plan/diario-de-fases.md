@@ -245,3 +245,31 @@ Plano-mestre em `fase-4/`. Reanálise dedicada por subfase (contexto fresco → 
   fail-closed do pepper); integração do export do Figma Make (deps próprias) na 4c; manter support stateless.
 
 **Descobertas (depois):** _(por subfase)_
+
+### Fase 4a — Auth / OTP
+
+**Reanálise (antes):**
+- Implementar o **desenho já reconciliado por pentest** (DEC-ORB-037 / `fase-4/4a-auth-otp.md`). Pontos de
+  atenção que o pentest cravou: **(a) cooldown-não-burn** — tentativa errada de OTP incrementa `attempts` +
+  `last_attempt_at` e aplica backoff, mas **NÃO consome** o código (senão um terceiro tranca a vítima — B2);
+  **(b) pepper fail-closed** fora de `environment=local`; **(c) e-mail = identidade sem UNIQUE** → resolve o
+  lead **mais recente** por e-mail; **(d) resposta 202 neutra** no request-otp (envia só se houver lead);
+  **(e)** token guardado como `sha256` (nunca cru); sessão **sliding + absoluto**.
+- Tabelas: migration 0003 (`auth_sessions`, `otp_codes` com `attempts`/`last_attempt_at`/`consumed_at`).
+- `require_session` (Bearer → `validate_session` → `lead_id`) — base do anti-IDOR da 4b; comita o *slide*.
+- Testes: OTP válido→token; errado→401 **sem consumir**; expirado/reuso→401; **anti-lockout** (erros de 3º
+  não impedem o dono); sessão expira (idle+absoluto); `require_session` bloqueia sem token.
+- **Riscos:** corrida no verify (`FOR UPDATE`); relógio consistente; não logar o código nunca.
+
+**Descobertas (depois):**
+- **Auth/OTP implementado** (desenho reconciliado do pentest). **Cooldown-não-burn verificado:** palpite
+  errado incrementa `attempts`+`last_attempt_at` e aplica backoff (`2^attempts`, cap 60s) mas **não
+  consome** → após o cooldown, o código legítimo ainda funciona (anti-lockout B2). Reuso/expiração/absoluto ok.
+- **OTP nunca logado** (só `email` mascarado; grep por `code=[0-9]{5}` = vazio); token guardado como `sha256`.
+- **`require_session`** pronto (Bearer→lead_id, comita o *slide*) — usado na 4b. `request-otp` **202 neutro**;
+  envia só se há lead.
+- **Decisão de teste:** seed de OTP conhecido + avanço do cooldown via SQL (`last_attempt_at = now()-90s`)
+  para não depender do relógio.
+- **Sem mudança de escopo. 4a concluída.** Próximo: **4b** (support_agent single-turn + `/support/chat` autenticado).
+
+**Verificado (4a):** `ruff` limpo + `pytest` **52/52** (security + auth flow); docker (auto-migrate 0003, 202/401, OTP não vaza código). ✅

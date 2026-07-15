@@ -34,6 +34,19 @@ class Settings(BaseSettings):
     # o request_id é sempre gerado server-side (seguro por default).
     trusted_proxy_secret: str | None = None
 
+    # Auth / OTP (DEC-ORB-037). auth_pepper é fail-closed fora de environment=local.
+    auth_pepper: str | None = None
+    use_fake_notifications: bool = True
+    otp_ttl_s: int = 600            # 10 min
+    otp_length: int = 5
+    otp_max_attempts: int = 5
+    otp_resend_interval_s: int = 30
+    otp_rate_window_s: int = 900    # 15 min
+    otp_rate_max: int = 5
+    session_idle_ttl_s: int = 1800      # 30 min (sliding)
+    session_absolute_ttl_s: int = 43200  # 12 h
+    session_slide_coalesce_s: int = 60
+
     @property
     def masked_openai_key(self) -> str:
         """Nunca logar a chave em claro (DEC-ORB-018 — PII/segredos)."""

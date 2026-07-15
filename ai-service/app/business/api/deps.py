@@ -1,0 +1,29 @@
+"""Dependencies de auth (DEC-ORB-037): `require_session` (Bearer → `lead_id`) — base do anti-IDOR da 4b."""
+from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.business.adapters.notification import get_notification
+from app.business.repository.auth_repository import AuthRepository
+from app.business.service.auth_service import AuthService
+from app.shared.database import get_session
+
+
+def bearer_token(authorization: str | None) -> str | None:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    return authorization[7:].strip() or None
+
+
+async def require_session(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> str:
+    """Valida o token de sessão e devolve o `lead_id`. 401 se ausente/ inválido."""
+    token = bearer_token(authorization)
+    if token is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="missing_bearer_token")
+    lead_id = await AuthService(AuthRepository(session), get_notification()).validate_session(token)
+    if lead_id is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_session")
+    await session.commit()  # persiste o slide (sliding window)
+    return lead_id
