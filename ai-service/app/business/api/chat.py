@@ -16,6 +16,7 @@ from app.business.api.deps import require_session_chat
 from app.business.domain.slots import missing_slots, validate_slots
 from app.business.repository.chat_repository import ChatRepository
 from app.business.service.chat_service import ChatService, SessionNotFound
+from app.business.service.quote_service import QuoteService, quote_public
 from app.shared.config import get_settings
 from app.shared.database import get_chat_session
 
@@ -49,6 +50,15 @@ class TurnIn(BaseModel):
     client_turn_id: str | None = Field(default=None, max_length=64)
 
 
+class QuoteOut(BaseModel):
+    quote_id: str
+    premium_cents: int
+    currency: str
+    coverages: list[str]
+    broker_applied: bool
+    pdf_ref: str | None
+
+
 class TurnOut(BaseModel):
     session_id: str
     seq: int
@@ -58,6 +68,7 @@ class TurnOut(BaseModel):
     ready_to_quote: bool
     handoff_suggested: bool
     replay: bool
+    quote: QuoteOut | None = None  # preenchido no turno que gera a cotação (DEC-ORB-043)
 
 
 class MessageOut(BaseModel):
@@ -117,3 +128,17 @@ async def get_messages(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # gate de posse (E1)
     msgs = await repo.list_messages(session_id=session_id)
     return [MessageOut(seq=m.seq, role=m.role, content=m.content) for m in msgs]
+
+
+@router.get("/support/sessions/{session_id}/quote", response_model=QuoteOut)
+async def get_quote(
+    session_id: str,
+    lead_id: str = Depends(require_session_chat),
+    session: AsyncSession = Depends(get_chat_session),
+) -> QuoteOut:
+    if await ChatRepository(session).load_owned(session_id=session_id, lead_id=lead_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # gate de posse (E1)
+    row = await QuoteService(session).for_session(session_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # ainda sem cotação
+    return QuoteOut(**quote_public(row))

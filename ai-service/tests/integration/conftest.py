@@ -24,8 +24,8 @@ async def db_engine():
     try:
         async with engine.begin() as conn:
             await conn.execute(text(
-                "TRUNCATE business.leads, business.outbox, business.chat_messages, business.chat_sessions, "
-                "business.identities, business.auth_sessions, business.otp_codes"
+                "TRUNCATE business.leads, business.outbox, business.quotes, business.chat_messages, "
+                "business.chat_sessions, business.identities, business.auth_sessions, business.otp_codes"
             ))
     except Exception as exc:  # banco indisponível / não migrado
         await engine.dispose()

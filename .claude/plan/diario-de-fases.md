@@ -428,3 +428,27 @@ redigia **tracebacks** (branch `exc_text` morto) → pré-formata+redige `exc_in
 (anti log-forging), `hide_parameters=True` nas duas engines. **1 LOW documentado** (cross-import
 `ai→business` no `qualification_agent`, F3b pré-existente, fora do caminho converse). `pytest` **85** (53
 unit + 32 integração) + smoke: broker_code *stale* some ao negar corretor. ✅
+
+## Fase 5b — Tools de cotação (quote/PDF) + audit de integração · V1.5
+
+Fatiada: **5b.1** (cotação) + **5b.2** (audit `integration_events`). Reanálise em
+`fase-5/5b-tools-cotacao-audit.md`; decisões DEC-ORB-043/044 (cotação automática · integration_events · PDF
+= marcador).
+
+### Fase 5b.1 — Cotação (quote_tool)
+
+**Descobertas (depois):**
+- **Orquestração pelo business** (não pelo LLM): quando os slots completam (`ready_to_quote`), o
+  `ChatService` chama o `QuoteService` **automaticamente** e devolve o **card** (`quote`) na resposta do
+  turno. O prêmio vem de `CrmPort.price_quote` (fake determinístico, **já existia**) — número/decisão fora
+  do LLM (reconcilia DEC-ORB-027). Migração `0005` (`business.quotes`, prêmio em **centavos**,
+  `UNIQUE(session_id)` = uma por sessão).
+- **Autorização de `broker_code` server-side (fecha o E6):** `FakeCrm.price_quote` aplica −10% só para
+  corretor **autorizado** (`_AUTHORIZED_BROKERS`); código não-autorizado → sem desconto.
+- **PDF = marcador** (`pdf_ref`), sem bytes/endpoint (decisão do usuário). GET `/support/sessions/{id}/quote`
+  autenticado com **gate de posse** (anti-IDOR); outro lead → 404 neutro.
+- **Sem mudança de escopo. 5b.1 concluída.** Próximo: **5b.2** (audit que habilita a jornada).
+
+**Verificado (5b.1):** `ruff` + `pytest` **88** (53 unit + 35 integração — cotação gerada ao completar,
+desconto só p/ corretor autorizado, GET /quote anti-IDOR). **Smoke HTTP:** card com prêmio do CRM
+(R$ 1.512,00 = fator de região × base, −10% corretor autorizado), coberturas e `pdf_ref`. ✅

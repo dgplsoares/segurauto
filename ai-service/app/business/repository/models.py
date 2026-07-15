@@ -141,3 +141,45 @@ class ChatMessageRow(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     client_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class QuoteRow(Base):
+    """Cotação gerada na conversa (DEC-ORB-043). Escopada à sessão; prêmio em **centavos** (vem do CRM, não
+    do LLM). Uma por sessão (re-cota = F6). `pdf_ref` é só um marcador (sem bytes)."""
+
+    __tablename__ = "quotes"
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_quotes_session"),
+        {"schema": "business"},
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("business.chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    lead_id: Mapped[str] = mapped_column(String(36), index=True)
+    premium_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), server_default="BRL")
+    slots: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    coverages: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    broker_applied: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    pdf_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntegrationEventRow(Base):
+    """Audit append-only das trocas com sistemas externos (fakes) — DEC-ORB-044. Habilita a jornada
+    (DEC-ORB-042). `request`/`response` já mascarados de PII pelo caller; o OTP NUNCA registra o código."""
+
+    __tablename__ = "integration_events"
+    __table_args__ = {"schema": "business"}
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lead_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(40), index=True)  # crm_sync|crm_price_quote|ads_conversion|notify
+    request: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    response: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    status: Mapped[str] = mapped_column(String(20), server_default="ok")  # ok|error
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

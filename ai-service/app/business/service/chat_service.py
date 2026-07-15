@@ -15,6 +15,7 @@ from app.business.domain.slots import (
     validate_slots,
 )
 from app.business.repository.chat_repository import ChatRepository
+from app.business.service.quote_service import QuoteService, quote_public
 from app.shared.config import get_settings
 from app.shared.guards import strip_injection
 
@@ -58,11 +59,18 @@ class ChatService:
         await self.repo.add_message(session_id=session_id, seq=assistant_seq, role="assistant", content=reply)
         sess.slots = new_slots
         sess.last_turn_at = _now()
-        if is_ready_to_quote(new_slots) and sess.quote_ready_at is None:
-            sess.quote_ready_at = _now()  # GANCHO F5b — só SINALIZA, não cota
+        became_ready = is_ready_to_quote(new_slots) and sess.quote_ready_at is None
+        if became_ready:
+            sess.quote_ready_at = _now()
         if handoff and sess.handoff_requested_at is None:
             sess.handoff_requested_at = _now()
-        return self._result(sess, seq=assistant_seq, reply=reply, replay=False)
+        quote = None
+        if became_ready:  # cotação AUTOMÁTICA ao completar os slots (DEC-ORB-043) — número do CRM, não do LLM
+            row, _ = await QuoteService(self.repo.session).create_for_session(
+                session_id=session_id, lead_id=sess.lead_id, slots=new_slots
+            )
+            quote = quote_public(row)
+        return self._result(sess, seq=assistant_seq, reply=reply, replay=False, quote=quote)
 
     async def _converse(
         self, *, session_id: str, message: str, slots: dict, user_seq: int
@@ -83,7 +91,7 @@ class ChatService:
         )
         return result.get("reply", ""), merged, bool(result.get("handoff_suggested", False))
 
-    def _result(self, sess, *, seq: int, reply: str, replay: bool) -> dict:
+    def _result(self, sess, *, seq: int, reply: str, replay: bool, quote: dict | None = None) -> dict:
         return {
             "session_id": sess.id,
             "seq": seq,
@@ -93,4 +101,5 @@ class ChatService:
             "ready_to_quote": sess.quote_ready_at is not None,
             "handoff_suggested": sess.handoff_requested_at is not None,
             "replay": replay,
+            "quote": quote,
         }

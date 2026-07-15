@@ -144,6 +144,46 @@ async def test_turn_extracts_slots_and_signals_ready_to_quote(client, sm):
     assert body["missing_slots"] == [] and body["ready_to_quote"] is True
 
 
+async def test_quote_generated_when_slots_complete(client, sm):
+    _, token = await _auth_lead(sm)
+    sid = await _create_session(client, token)
+    r = await client.post(
+        f"/support/sessions/{sid}/messages",
+        json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t1"},
+        headers=_hdr(token),
+    )
+    q = r.json()["quote"]
+    assert q is not None and q["premium_cents"] > 0 and q["currency"] == "BRL"
+    assert q["broker_applied"] is False and q["pdf_ref"]  # PDF = marcador
+    r2 = await client.get(f"/support/sessions/{sid}/quote", headers=_hdr(token))  # GET devolve a mesma
+    assert r2.status_code == 200 and r2.json()["quote_id"] == q["quote_id"]
+
+
+async def test_quote_broker_discount_only_for_authorized(client, sm):
+    _, token_a = await _auth_lead(sm, email="ba@example.com", key="qa")
+    sid_a = await _create_session(client, token_a)
+    ra = await client.post(f"/support/sessions/{sid_a}/messages", headers=_hdr(token_a),
+        json={"message": "placa ABC1D23, CEP 01310-100, tenho corretor código ABC123", "client_turn_id": "t"})
+    _, token_b = await _auth_lead(sm, email="bb@example.com", key="qb")
+    sid_b = await _create_session(client, token_b)
+    rb = await client.post(f"/support/sessions/{sid_b}/messages", headers=_hdr(token_b),
+        json={"message": "placa ABC1D23, CEP 01310-100, tenho corretor código ZZZ999", "client_turn_id": "t"})
+    qa, qb = ra.json()["quote"], rb.json()["quote"]
+    # broker_code autorizado (ABC123) → desconto server-side; não-autorizado (ZZZ999) → sem desconto (E6).
+    assert qa["broker_applied"] is True and qb["broker_applied"] is False
+    assert qa["premium_cents"] < qb["premium_cents"]
+
+
+async def test_get_quote_anti_idor(client, sm):
+    _, token_a = await _auth_lead(sm, email="qi-a@example.com", key="qia")
+    _, token_b = await _auth_lead(sm, email="qi-b@example.com", key="qib")
+    sid_a = await _create_session(client, token_a)
+    await client.post(f"/support/sessions/{sid_a}/messages", headers=_hdr(token_a),
+        json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t"})
+    r = await client.get(f"/support/sessions/{sid_a}/quote", headers=_hdr(token_b))  # B lê a cotação de A
+    assert r.status_code == 404  # neutro
+
+
 async def _insert_otp(sm, email: str, code: str) -> None:
     async with sm() as session:
         await AuthRepository(session).insert_otp(
