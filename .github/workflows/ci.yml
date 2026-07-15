@@ -1,0 +1,77 @@
+name: CI
+
+# Gate automatizado (DEC-ORB-006/010): roda SÓ com fakes + LLM stub — sem segredos, sem rede real.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-service:
+    name: ai-service (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: segurauto
+          POSTGRES_PASSWORD: segurauto
+          POSTGRES_DB: segurauto
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U segurauto -d segurauto"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://segurauto:segurauto@localhost:5432/segurauto
+      ENVIRONMENT: local   # fakes + stub; auth_pepper cai no fallback de dev (DEC-ORB-037)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            ai-service/requirements.txt
+            ai-service/requirements-dev.txt
+      - name: Instalar dependências
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff (lint)
+        run: ruff check app tests
+      - name: Migrar (alembic upgrade head)
+        run: alembic upgrade head
+      - name: Testes (unit + integração — fakes + LLM stub)
+        run: pytest tests/unit tests/integration -q
+
+  frontend:
+    name: frontend (build + typecheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependências
+        run: npm ci
+      - name: Build (typecheck + build de produção)
+        run: npm run build
+
+  docker-build:
+    name: docker build (stack do zero)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build das imagens (sem subir o stack)
+        run: docker compose build

@@ -119,8 +119,11 @@ em `diario-de-fases.md`. **Escopo:** núcleo focado (re-cotação/coberturas adi
 ## Fase 7 — CI + verificação Docker + entrega
 Meta: gate automatizado e stack reprodutível do zero.
 
-- [ ] `.github/workflows/ci.yml`: job **ai-service** (pytest mock + ruff), job **frontend** (build + test), job **docker build**
-- [ ] `/metrics` completo + **README de entrega** (stack, fake vs real, decisões, observabilidade, próximos passos)
+- [x] `.github/workflows/ci.yml`: job **ai-service** (ruff + pytest unit+integração com pgvector service),
+  job **frontend** (build + typecheck), job **docker build** (imagens do zero). Sem segredos (fakes + stub).
+  *Verificado:* YAML válido; migração **do zero** 0001→0007 num banco fresco (mirror do CI) limpa.
+- [x] **README de entrega**: badge do CI, fluxo ponta a ponta, **jornada do lead** (seed + eval), fake vs
+  real, observabilidade, decisões (pointer p/ DECISIONS.md), escopo V1.5/V2. `/metrics` já existe (F2/DEC-ORB-016).
 - [x] **Endpoint de jornada do lead para avaliação** (DEC-ORB-042, **gated demo-only**) — **concluído
   (antecipado)**: módulo `app/eval/` (read-only). `GET /eval/leads/journey?email=` (JSON **agregado por
   e-mail**: cadastro + mensagens + outbox + cotações + `integration_events`; resolve pela identidade
