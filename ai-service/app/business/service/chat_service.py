@@ -80,7 +80,8 @@ class ChatService:
         """Extração DETERMINÍSTICA de slots (E6) no business; monta o transcrito sanitizado por linha +
         janela (E5/E8) e chama o `ConverseAgent` via `AiPort` só para GERAR a resposta. O agente nunca
         decide slots/cotação (isso é determinístico aqui) — número/decisão ficam fora do LLM."""
-        found = extract_slots_from_text(strip_injection(message))
+        expected = (missing_slots(slots) or [None])[0]  # slot que o agente acabou de perguntar (contexto)
+        found = extract_slots_from_text(strip_injection(message), expected_slot=expected)
         merged = validate_slots({**slots, **found})
         progressed = merged != slots
         missing = missing_slots(merged)

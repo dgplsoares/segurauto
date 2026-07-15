@@ -24,6 +24,9 @@ _HAS_BROKER_RE = re.compile(r"(?i)\b(tenho|com|meu|j[áa]\s+tenho)\s+corretor")
 _BROKER_CODE_RE = re.compile(
     r"(?i)c[óo]digo(?!\s+postal|\s+de\s+barras|\s+de\s+[áa]rea)[^A-Za-z0-9]{0,4}([A-Za-z0-9]{3,20})"
 )
+# Resposta CURTA (sim/não) — só interpretada quando a pergunta do corretor acabou de ser feita (contexto).
+_YES_RE = re.compile(r"(?i)^\s*(sim|tenho|claro|com certeza|possuo|positivo|afirmativo)\b")
+_NO_RE = re.compile(r"(?i)^\s*(n[ãa]o|nao|nunca|negativo|sem)\b")
 
 
 def _clean(value: str, maxlen: int) -> str:
@@ -65,9 +68,11 @@ def is_ready_to_quote(slots: dict) -> bool:
     return not missing_slots(slots)
 
 
-def extract_slots_from_text(text: str) -> dict:
+def extract_slots_from_text(text: str, expected_slot: str | None = None) -> dict:
     """Extração DETERMINÍSTICA (E6) dos slots presentes no texto — nunca por LLM. Retorna só o que
-    reconhece, já validado por `validate_slots`. `broker_code` fica só no formato (autorização = F5b)."""
+    reconhece, já validado por `validate_slots`. `broker_code` fica só no formato (autorização = F5b).
+    `expected_slot` = slot que o agente acabou de perguntar; permite entender um "sim/não" curto no
+    contexto certo (ex.: resposta à pergunta do corretor)."""
     found: dict = {}
     plate = _PLATE_TEXT_RE.search(text)
     if plate:
@@ -79,6 +84,12 @@ def extract_slots_from_text(text: str) -> dict:
         found["has_broker"] = False
     elif _HAS_BROKER_RE.search(text):
         found["has_broker"] = True
+    elif expected_slot == "has_broker":
+        # A pergunta do corretor foi feita agora → aceita resposta curta "sim/não".
+        if _NO_RE.match(text):
+            found["has_broker"] = False
+        elif _YES_RE.match(text):
+            found["has_broker"] = True
     code = _BROKER_CODE_RE.search(text)
     if code:
         found["broker_code"] = code.group(1)

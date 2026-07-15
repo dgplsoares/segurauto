@@ -65,3 +65,12 @@ def test_broker_code_requires_has_broker_true():
 def test_extract_codigo_postal_is_not_a_broker_code():
     out = extract_slots_from_text("meu código postal é 01001-000")
     assert "broker_code" not in out and out.get("zipcode") == "01001000"
+
+
+def test_extract_short_yes_no_only_when_broker_is_expected():
+    # "não" seco só vira has_broker=False quando o agente acabou de perguntar sobre o corretor.
+    assert extract_slots_from_text("não", expected_slot="has_broker") == {"has_broker": False}
+    assert extract_slots_from_text("sim", expected_slot="has_broker") == {"has_broker": True}
+    # sem esse contexto, um "não" não mexe em has_broker (evita falso-positivo).
+    assert extract_slots_from_text("não") == {}
+    assert extract_slots_from_text("não sei o CEP ainda", expected_slot="zipcode") == {}
