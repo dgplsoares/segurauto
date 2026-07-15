@@ -6,6 +6,10 @@
   <img src="docs/screenshot-segurauto.png" alt="SegurAuto — landing page de captação com consultor de IA" width="840">
 </p>
 
+<p align="center">
+  🎨 <a href="https://www.figma.com/proto/PYqHA3t5ZoUPHlrnqoF3Na/Untitled?node-id=7-917&t=oo5RD4Y8RH7TQ3Hz-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1"><strong>Protótipo interativo no Figma</strong></a>
+</p>
+
 Captação de leads para **seguros de automóvel**, **chat-first**: da landing page o lead conversa com um
 **consultor de IA** que coleta os dados, gera uma **cotação** e, com a confirmação, dispara as **ações**
 (notificação, conversão, sinal ao CRM) ou o **handoff** para um corretor. Em paralelo, cada lead é
