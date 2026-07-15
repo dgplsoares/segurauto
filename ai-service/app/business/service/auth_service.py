@@ -4,6 +4,7 @@ Anti-lockout (B2): tentativa errada de OTP incrementa `attempts` + aplica **cool
 **não consome** o código (só o palpite correto consome). Identidade = e-mail verificado (lead mais recente).
 """
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 from app.business.repository.auth_repository import AuthRepository
@@ -29,8 +30,14 @@ class AuthService:
         self.repo = repo
         self.notif = notification
 
-    async def request_otp(self, email: str) -> None:
-        """Sempre 202 neutro. Rate-limit silencioso; envia só se houver lead (não spamma estranhos)."""
+    async def request_otp(self, email: str, *, defer: Callable[..., None] | None = None) -> None:
+        """Sempre 202 neutro. Rate-limit silencioso; envia só se houver lead (não spamma estranhos).
+
+        O envio do OTP é despachado por `defer` (ex.: FastAPI `BackgroundTasks.add_task`) para sair do
+        **caminho crítico** do request: com ou sem lead, a latência do 202 fica uniforme — fecha o timing
+        side-channel de enumeração de usuários (o SMTP real levaria centenas de ms). Sem `defer`
+        (seed/testes), envia inline.
+        """
         email = _norm_email(email)
         s = get_settings()
         now = _now()
@@ -47,7 +54,10 @@ class AuthService:
         )
         lead = await self.repo.latest_lead_by_email(email)
         if lead is not None:
-            await self.notif.send_otp(email=email, code=code)
+            if defer is not None:
+                defer(self.notif.send_otp, email=email, code=code)  # fora do caminho crítico (202 uniforme)
+            else:
+                await self.notif.send_otp(email=email, code=code)  # inline (seed/testes)
             await record_integration_event(
                 self.repo.session, event_type="notify_otp", lead_id=lead.id,
                 request={"channel": "email", "purpose": "otp", "email": email},  # NUNCA o código

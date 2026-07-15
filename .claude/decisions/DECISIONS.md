@@ -399,3 +399,21 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   (Anthropic passa a dirigir converse + qualification).
 - **Trade-off:** confirmação de que a degradação determinística > fallback-para-stub/erro-cru; +2 SDKs no
   requirements (opt-in) e um breaker/classificador, em troca de resiliência real a incidente/saldo zerado.
+
+### DEC-ORB-047 — F8e: e-mail real via adapter SMTP genérico (independente de provider)
+- **Contexto:** o homolog "funciona como prod" precisa **entregar o OTP** no inbox do avaliador (habilita o
+  fluxo de chat completo, não só o seed bypass) e ter o canal de e-mail pronto para os disparos do outbox
+  (V2). Restrição do usuário: o provider de e-mail é **infra trocável — a app NÃO pode depender dele**.
+- **Escolha:** um **adapter SMTP genérico** (`SmtpNotification`, `aiosmtplib` async, **import lazy**) atrás
+  do `NotificationPort` existente; `get_notification()` ramifica em `use_fake_notifications` (default `True`
+  → fake/dev-echo em local/CI; homolog seta `0`). **SMTP e não a REST API do fornecedor de propósito**: SMTP
+  é o denominador comum (todo provider fala) → trocar de fornecedor = mudar `.env`, **zero código**. Efeito
+  duplo: repo **neutro** (nenhum fornecedor citado — só valores em `.env`/Secrets) **e** provider-agnóstico.
+  Config em `.env`: `SMTP_HOST/PORT/SSL/USER/PASSWORD`, `MAIL_FROM`, `MAIL_BCC`. **Semântica de falha
+  deliberada:** `send_otp` **engole** falha de entrega (loga ERROR) → preserva o **202 neutro** do
+  `request_otp` (não vaza existência de e-mail, não dá 500); `notify(channel="email")` **levanta** → a
+  outbox **retenta** (at-least-once); `notify(whatsapp|sms)` = **no-op fake** (pronto p/ V2). Templates HTML
+  inline (branding SegurAuto neutro), cabeçalhos **saneados** (sem CRLF do destinatário → anti header-inject).
+- **Trade-off:** +1 dep runtime (`aiosmtplib`, lazy) e um adapter, em troca de OTP real no homolog + canal de
+  e-mail pronto para o outbox — **sem** acoplar o domínio a nenhum fornecedor (troca por `.env`). A verificação
+  de domínio (DKIM/SPF) do remetente é **operacional** (fora do repo); o código roda no fake sem ela.

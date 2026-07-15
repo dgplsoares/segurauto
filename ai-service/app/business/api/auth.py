@@ -1,6 +1,6 @@
 """Endpoints de auth (DEC-ORB-037): request-otp (202 neutro), verify-otp (200 token / 401), logout.
 Sem UI (o modal é a Fase 4c)."""
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,8 +33,14 @@ def _service(session: AsyncSession) -> AuthService:
 
 
 @router.post("/request-otp", status_code=status.HTTP_202_ACCEPTED)
-async def request_otp(payload: RequestOtpIn, session: AsyncSession = Depends(get_session)) -> dict:
-    await _service(session).request_otp(str(payload.email))
+async def request_otp(
+    payload: RequestOtpIn,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    # O envio do OTP é adiado para depois da resposta (BackgroundTasks) → latência do 202 uniforme,
+    # independente de o e-mail ser cliente ou não (fecha o timing side-channel — DEC-ORB-047/review 8e).
+    await _service(session).request_otp(str(payload.email), defer=background_tasks.add_task)
     await session.commit()
     return {"status": "otp_sent_if_registered"}  # neutro — não revela existência do e-mail
 

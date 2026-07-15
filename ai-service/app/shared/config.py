@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     # o request_id é sempre gerado server-side (seguro por default).
     trusted_proxy_secret: str | None = None
 
+    # E-mail (SMTP genérico — DEC-ORB-047). Provider é INFRA trocável: a app não conhece o fornecedor,
+    # só fala SMTP. Trocar de provider = mudar estas vars, zero código. Efetivo só com use_fake_notifications=0.
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_ssl: bool = True          # True → TLS implícito (porta 465); False → STARTTLS (porta 587)
+    smtp_user: str = ""
+    smtp_password: str | None = None
+    smtp_timeout_s: int = 15
+    mail_from: str = "SegurAuto <noreply@localhost>"  # remetente; domínio precisa estar verificado no provider
+    mail_bcc: str | None = None
+
     # Auth / OTP (DEC-ORB-037). auth_pepper é fail-closed fora de environment=local.
     auth_pepper: str | None = None
     use_fake_notifications: bool = True
@@ -70,6 +81,11 @@ class Settings(BaseSettings):
     @property
     def masked_anthropic_key(self) -> str:
         return "set" if self.anthropic_api_key else "unset"
+
+    @property
+    def masked_smtp_password(self) -> str:
+        """Nunca logar a senha/API key do SMTP em claro (DEC-ORB-018/047)."""
+        return "set" if self.smtp_password else "unset"
 
 
 @lru_cache

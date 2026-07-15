@@ -65,6 +65,29 @@ async def test_request_otp_sends_only_if_lead_exists(sm):
     assert len(notif_mod.get_notification().sent) == 1  # não spamma estranhos
 
 
+async def test_request_otp_defers_send_off_critical_path(sm):
+    """Fix do review 8e: com `defer`, o envio do OTP é AGENDADO (fora do caminho crítico), não executado
+    inline → latência do 202 uniforme (fecha o timing side-channel de enumeração)."""
+    await _make_lead(sm)
+    scheduled: list = []
+
+    def spy(func, **kwargs):  # stand-in de BackgroundTasks.add_task
+        scheduled.append((func, kwargs))
+
+    async with sm() as s:
+        await _svc(s).request_otp(EMAIL, defer=spy)
+        await s.commit()
+    assert len(scheduled) == 1  # com lead → agenda o envio
+    assert scheduled[0][0] == notif_mod.get_notification().send_otp
+    assert scheduled[0][1]["email"] == EMAIL and "code" in scheduled[0][1]
+    assert notif_mod.get_notification().sent == []  # NADA enviado inline (deferido, não executado)
+
+    async with sm() as s:
+        await _svc(s).request_otp("ghost@example.com", defer=spy)  # sem lead
+        await s.commit()
+    assert len(scheduled) == 1  # ghost não agenda nada
+
+
 async def test_wrong_attempt_does_not_burn_then_correct_works(sm):
     lead_id = await _make_lead(sm)
     await _seed_otp(sm, "12345")
@@ -124,6 +147,15 @@ async def test_session_absolute_and_revoke(sm):
         await s.commit()
     async with sm() as s:
         assert await _svc(s).validate_session(token) is None  # absoluto vencido
+
+
+async def test_request_otp_endpoint_neutral_202(client, sm):
+    """O endpoint injeta BackgroundTasks e responde 202 neutro tanto para e-mail registrado quanto não."""
+    await _make_lead(sm)
+    r1 = await client.post("/auth/request-otp", json={"email": EMAIL})
+    r2 = await client.post("/auth/request-otp", json={"email": "nobody@example.com"})
+    assert r1.status_code == 202 and r2.status_code == 202
+    assert r1.json() == r2.json()  # corpo idêntico — não revela existência do e-mail
 
 
 async def test_verify_otp_endpoint(client, sm):

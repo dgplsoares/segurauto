@@ -10,9 +10,12 @@
 - **Providers:** habilitar **OpenAI e Anthropic** por `.env`, mantendo o **stub** sempre disponível (default/CI).
 - **Fallback do provider real:** **degradação determinística + observabilidade + circuit-breaker** — NÃO cair
   no stub (vaza `"[stub]"`), NÃO erro cru. O funil segue (cotação/handoff são determinísticos).
-- **Acesso do avaliador no deploy público:** **seed + eval API protegida** (dados são fakes), sem infra de
-  e-mail; o fluxo de chat completo com OTP real fica para depois.
-- **Sequência:** 8a (LLM) → 8b (README) → 8c (refactor) → 8d (deploy).
+- **Acesso do avaliador no deploy público:** **seed + eval API protegida** (dados são fakes) **+ OTP real
+  por e-mail** (8e) — o avaliador autentica pelo **fluxo de chat completo**, não só pelo seed bypass.
+- **E-mail (8e):** adapter **SMTP genérico** atrás do `NotificationPort`; o provider é **infra trocável por
+  `.env`** (a arquitetura NÃO depende do fornecedor). OTP + canal `email` do `notify` reais; WhatsApp/SMS
+  seguem fakes (prontos p/ V2).
+- **Sequência:** 8a (LLM) → 8b (README) → 8c (refactor) → **8e (e-mail real)** → 8d (deploy).
 
 ---
 
@@ -68,6 +71,36 @@ Mover o dataclass `QualificationResult`/`QualificationBand` de `ai/` para `app/s
 Refactor mecânico: mover o módulo, reapontar imports em `ai/` e `business/`, rodar `ruff` + suíte completa.
 Verificar novamente que **cross-import business↔ai = 0** (a invariante do DEC-ORB-021).
 
+## 8e — Serviço de e-mail real (adapter SMTP genérico)
+
+**Motivação:** o homolog "funciona como prod" — precisa **entregar o OTP** no inbox real do avaliador e ter
+o canal de e-mail pronto para os **disparos do outbox** (V2). O provider de e-mail é **infra trocável**: a
+app **NÃO pode depender do fornecedor**.
+
+**Desenho (independência de provider):** o código só conhece o `NotificationPort`; atrás dele um **adapter
+SMTP genérico** (`aiosmtplib`, async, import lazy) — **não** "provider X", só **SMTP**. Escolha por SMTP e
+**não** pela REST API do fornecedor **de propósito**: SMTP é o denominador comum (todo provider fala), então
+trocar de fornecedor = mudar `.env`, **zero código**. Efeito duplo: repo **neutro** (nenhum fornecedor
+citado) **e** provider-agnóstico. Config 100% em `.env` (`SMTP_HOST/PORT/SSL/USER/PASSWORD`, `MAIL_FROM`,
+`MAIL_BCC`).
+
+**Seam já existente:** `config.use_fake_notifications` (default `True`) + `get_notification()` — ramifica
+fake vs SMTP. Local/CI seguem no **fake** (dev-echo do OTP); o homolog seta `USE_FAKE_NOTIFICATIONS=0`.
+
+**Semântica de falha (deliberada):**
+- `send_otp` **engole** falha de entrega (loga ERROR) → preserva o **202 neutro** do `request_otp` (uma
+  falha de SMTP não pode vazar existência de e-mail nem dar 500).
+- `notify(channel="email")` **levanta** em falha dura → a **outbox** retenta (at-least-once).
+- `notify(channel="whatsapp"|"sms")` → **no-op fake** (id aleatório + log), **pronto p/ V2**.
+
+**Templates:** HTML inline, branding **SegurAuto** neutro (OTP + `quote_confirmation`). Cabeçalhos saneados
+(sem CRLF do destinatário → anti header-injection).
+
+**Verificar:** unit sem rede (monkeypatch `aiosmtplib.send`): factory; `EmailMessage` bem-formado; `send_otp`
+engole falha; `notify` email envia / WA-SMS não; `notify` email levanta. Real opt-in em `tests/real/`
+(envia OTP de verdade só com `SMTP_*` + `USE_FAKE_NOTIFICATIONS=0`). Grep de neutralidade **vazio**
+(nenhum fornecedor no repo). Formaliza **DEC-ORB-047**.
+
 ## 8d — Deploy (HOMOLOG remoto que funciona como prod, co-hosting seguro, isolado)
 
 > O alvo `app-segurauto.diogosoares.com.br` é um **homolog** — funciona como prod, mas **não é indexado** por
@@ -100,6 +133,37 @@ carrega a LP; jornada acessível (protegida); nenhuma porta nova publicada no ho
 
 ## Sequenciamento e docs
 
-8a → 8b → 8c → **8d por último** (precisa dos anteriores estáveis + DNS/permissões). Cada sub-fase fecha com
-`ruff` + suíte + (frontend) `next build` e, quando aplicável, smoke; revisão adversarial nos pontos de risco
-(fallback do LLM; isolamento do deploy). Decisões formais viram DEC-ORB-046+ ao implementar.
+8a → 8b → 8c → **8e (e-mail real)** → **8d por último** (precisa dos anteriores estáveis + DNS/permissões).
+Cada sub-fase fecha com `ruff` + suíte + (frontend) `next build` e, quando aplicável, smoke; revisão
+adversarial nos pontos de risco (fallback do LLM; isolamento do deploy; e-mail/injeção). Decisões formais
+viram DEC-ORB-046+ ao implementar.
+
+---
+
+## Análise final (pós-entrega) — guardrails de prompt & postura de segurança
+
+> A executar **no fecho da entrega** (após 8e/8d estáveis), como checagem de qualidade e segurança.
+
+**1. Comparar a estratégia de "serviço de contexto" (classificação `on | out | mix`).** Em **outros
+projetos de IA** adotou-se, dentro da engenharia de prompt, um **serviço de contexto** que **qualifica a
+mensagem do usuário** como `on` (no tema), `out` (fora do tema) ou `mix` (misto) **antes/ao redor** da
+chamada principal ao LLM, condicionando a resposta — um **guardrail contra prompt injection** e desvio de
+escopo. Avaliar se faz sentido trazer para o SegurAuto, **comparando com os guardrails já existentes**:
+
+- **O que já protege hoje (guardrails de saída/estrutura):** o **número da cotação é determinístico**
+  (nunca sai do LLM); funil e handoff **determinísticos**; **degradação determinística** quando o provider
+  real falha (nunca eco de stub/erro cru — DEC-ORB-046); **input capado** (`chat_message_max_len`);
+  **escopo no system prompt** do converse; **PII mascarada** em logs; a IA **não decide** contratar/handoff
+  (confirmação explícita por ação — DEC-ORB-045).
+- **O delta do classificador `on|out|mix` (guardrail de entrada):** uma camada de **classificação de
+  escopo/intenção do input** (pré-LLM) que barra/neutraliza injeção e off-topic **antes** de chegar ao
+  prompt principal — **complementar** (defense-in-depth), não redundante com os guardrails de saída atuais.
+- **Decidir:** adotar — e **como** (classificador determinístico por regras/embeddings? um LLM barato como
+  o `claude-haiku-4-5`? híbrido?) — **ou** não, se o funil determinístico + escopo do system prompt já
+  cobrem o risco no V1 sem pagar a latência/custo de uma chamada extra. Registrar como DEC-ORB-04x.
+
+**2. Checar se o resultado final é satisfatório e seguro** — **revisão adversarial de fecho**: prompt
+injection (o input do chat não altera preço/decisões nem vaza o system prompt), **neutralidade** do repo
+(sem referência a outros projetos/empresas), **PII** (nada cru em log/audit), **segredos** (só em
+`.env`/Secrets), e o fluxo público do homolog (OTP real, eval protegida, no-index) — tudo funcionando como
+prod. Saída: veredito go/no-go para a prod real (ligar `ALLOW_INDEXING=true`).
