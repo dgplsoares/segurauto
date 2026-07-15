@@ -1,6 +1,9 @@
-"""Notificações (DEC-ORB-037): fake default — loga o e-mail **mascarado**, **nunca** o código. Real = pós-V1."""
+"""Notificações (DEC-ORB-037): fake default — loga o e-mail **mascarado**. O código só é ecoado no log em
+`ENVIRONMENT=local` (dev affordance p/ smoke visual — "dev mail catcher"); fora de local, nunca. Real = pós-V1."""
 import logging
 from functools import lru_cache
+
+from app.shared.config import get_settings
 
 logger = logging.getLogger("segurauto.business")
 
@@ -10,14 +13,17 @@ def _mask(email: str) -> str:
 
 
 class FakeNotification:
-    """Implementa `NotificationPort`. Registra envios (só o e-mail) para teste; jamais guarda/loga o código."""
+    """Implementa `NotificationPort`. Registra envios (só o e-mail); o código só vai ao log em local (dev)."""
 
     def __init__(self) -> None:
         self.sent: list[dict] = []
 
-    async def send_otp(self, *, email: str, code: str) -> None:  # noqa: ARG002 — code recebido, nunca persistido
+    async def send_otp(self, *, email: str, code: str) -> None:
         self.sent.append({"email": email})
         logger.info("otp_sent email=%s", _mask(email))
+        # Dev affordance SÓ em local (nunca em prod): ecoa o código para permitir o smoke visual do fluxo.
+        if get_settings().environment == "local":
+            logger.warning("otp_dev_echo email=%s code=%s", _mask(email), code)
 
 
 @lru_cache
