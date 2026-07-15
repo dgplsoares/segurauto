@@ -150,3 +150,37 @@ Plano-mestre em `fase-3/`. Decisões DEC-ORB-022..033 formalizadas. Reanálise d
   dead-letter; qualify → encadeia CRM/Ads idempotentes; contrato do CRM `status`/`source`).
 
 **Verificado (3b):** `ruff` limpo + `pytest` **34/34**; docker `POST /ai/qualify` (100/hot, 20/cold). ✅
+
+### Fase 3c — Worker (processo separado)
+
+**Reanálise (antes):**
+- **Ajuste de escopo:** **UTM/Click_ID adiado para F5/F6** — sem o frontend não há dado para popular
+  (o serviço fake de UTM é F5). A 3c foca no **worker** e adiciona só a coluna que ele precisa
+  (`next_attempt_at`). Isso mantém a 3c enxuta e verificável.
+- **Worker = processo separado** (compose `worker`, `python -m app.business.worker`). Loop callable
+  `run_worker_loop(stop_event, poll)` + `drain_once` (testável) + `process_one` (1 intent por transação).
+- **Claim:** `select(OutboxRow).with_for_update(skip_locked=True)` WHERE `pending` AND
+  `next_attempt_at<=now` ORDER BY `created_at` LIMIT 1.
+- **Handlers:** `qualify` → `AiPort.qualify` → aplica score/band/reason + `status=qualified` → **encadeia**
+  `crm_sync`/`ads_meta`/`ads_google` (mesma tx, `request_id` p/ correlação); `crm_sync` → `CrmPort.upsert`
+  (`status=synced`; contrato CRM: `source=landing_page`, `status=qualified`); `ads_*` → `send_conversion(event_id)` dedup.
+- **Idempotência:** `status=done` não é re-pego (efeitos 1×); handlers idempotentes (event_id/upsert) para
+  at-least-once. Erro → rollback → `retry_count++`/`next_attempt_at` backoff; `≥MAX` → `dead`.
+- **Fakes singletons** (`lru_cache`) para o estado de dedup persistir in-process + `reset_adapters()` nos testes.
+- **Riscos:** `FOR UPDATE` segura lock durante I/O (ok com fake/1 intent); retry em tx separada pós-rollback; re-hidratar `request_id`.
+
+**Descobertas (depois):**
+- **Fatia vertical fechada e2e com o worker SEPARADO:** `POST /leads` (received) → o worker (container
+  próprio) enriquece sozinho → `qualified` → `crm_synced` → 2 conversões → lead **`synced` (100/hot)**;
+  outbox tudo `done`.
+- **Correlação sobrevive à fronteira assíncrona (verificado):** os logs do worker saem com o **mesmo
+  `request_id`** do POST original (re-hidratado da outbox) — `grep rid=X` cobre form→worker→IA→CRM→Ads.
+- **Idempotência:** worker 2× → efeitos 1× (`status=done` não re-pego); no reprocesso forçado, o handler
+  **deduplica** por `event_id`. Dead-letter após `MAX_RETRIES`.
+- **UTM/Click_ID adiado para F5/F6** (sem frontend não há dado) — a 3c só adicionou `next_attempt_at`.
+- **Design testável:** `process_one`/`drain_once` (testes) vs `run_worker_loop` (processo). `SKIP LOCKED`
+  + backoff persistente + retry em tx separada pós-rollback.
+- **Sem outra mudança de escopo. Fase 3 COMPLETA (3a+3b+3c).** Próximo: **Fase 3.5 — Hardening/Auth**
+  (pré-F4), começando pela correção do LEAK-1 e o design do auth/OTP.
+
+**Verificado (3c):** `ruff` limpo + `pytest` **37/37**; e2e Docker (worker separado → lead `synced`, correlação preservada). ✅

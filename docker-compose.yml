@@ -33,6 +33,22 @@ services:
         condition: service_healthy               # espera o banco saudável (DEC-ORB-017)
     restart: unless-stopped
 
+  worker:                                        # processo SEPARADO consumindo a outbox (DEC-ORB-025)
+    build: ./ai-service
+    command: ["python", "-m", "app.business.worker"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://segurauto:segurauto@db:5432/segurauto}
+      USE_FAKE_CRM: ${USE_FAKE_CRM:-1}
+      USE_FAKE_ADS: ${USE_FAKE_ADS:-1}
+      LLM_PROVIDER: ${LLM_PROVIDER:-stub}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped                      # se a tabela ainda não migrou, reinicia até o ai-service migrar
+
   frontend:
     build: ./frontend
     environment:
