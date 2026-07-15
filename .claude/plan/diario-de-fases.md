@@ -634,3 +634,22 @@ todos MEDIUM — 3 defeitos distintos (2 agentes convergiram no handoff). Corrig
 
 **Verificado (revisão F6):** `ruff` + `pytest` **117** (59 unit + 58 integração) + `next build` + smoke E2E
 do handoff (cenário do defeito → `queued` + evento na jornada). ✅
+
+---
+
+## Fase 8a — Provider LLM real (OpenAI + Anthropic) + fallback resiliente (DEC-ORB-046)
+
+**Estado de partida:** o seam já era limpo — `LLMPort.complete(system,user)`, `StubLLM`, `OpenAILLM` real; o
+`ModelOrchestrator` já tinha timeout+retry e degradava a `None` (agente → fallback determinístico).
+
+**Feito:** `AnthropicLLM` (SDK `anthropic`, `messages.create`, default Opus 4.8, override por ENV) + factory
+3-vias. `LLMError(retryable, reason)` + `_classify(status,code,type)` nos adapters (quota/401 não-retryable;
+429/5xx/timeout retryable). `ModelOrchestrator`: **circuit-breaker por provider** + classificação + métricas
+`llm_error_total`/`llm_fallback_total`. Generalizados os 2 checks `"openai"` → `!= "stub"`. Config
+`anthropic_api_key`/`openai_model`/`anthropic_model` + `masked_anthropic_key`; SDKs no `requirements`
+(opt-in, lazy); `.env.example` documentado. **Skill `claude-api`** consultada para o SDK/model IDs corretos.
+
+**Verificado:** `ruff` + `pytest` **125** (66 unit + 59 integração; +8 do 8a: factory, classificação, breaker,
+e a política do orchestrator — auth/quota não retenta+abre o breaker, 429 retenta+degrada, breaker aberto
+curto-circuita). **Smoke real** (container com os SDKs): `LLM_PROVIDER=anthropic` **sem chave** → o adapter
+Anthropic é despachado e a app **degrada para o determinístico sem crash**; log de startup mascara as chaves. ✅

@@ -27,9 +27,12 @@ class Settings(BaseSettings):
     use_fake_crm: bool = True
     use_fake_ads: bool = True
 
-    # LLM — stub determinístico default; OpenAI opt-in (DEC-ORB-006/008)
-    llm_provider: str = "stub"  # stub | openai
+    # LLM — stub determinístico default; provider real opt-in (DEC-ORB-006/008/046)
+    llm_provider: str = "stub"  # stub | openai | anthropic
     openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    anthropic_model: str = "claude-opus-4-8"  # override p/ custo, ex.: claude-haiku-4-5
 
     # Embeddings — stub determinístico default; OpenAI opt-in (DEC-ORB-023)
     embeddings_provider: str = "stub"  # stub | openai
@@ -63,6 +66,10 @@ class Settings(BaseSettings):
     def masked_openai_key(self) -> str:
         """Nunca logar a chave em claro (DEC-ORB-018 — PII/segredos)."""
         return "set" if self.openai_api_key else "unset"
+
+    @property
+    def masked_anthropic_key(self) -> str:
+        return "set" if self.anthropic_api_key else "unset"
 
 
 @lru_cache

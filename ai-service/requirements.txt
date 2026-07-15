@@ -9,3 +9,6 @@ alembic==1.13.2
 prometheus-client==0.20.0
 email-validator==2.2.0
 langgraph>=0.2.20,<0.4
+# Providers de LLM reais — opt-in por LLM_PROVIDER; import lazy nos adapters (o stub/CI não os usa).
+openai>=1.40,<2.0
+anthropic>=0.40,<1.0

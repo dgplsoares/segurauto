@@ -63,8 +63,9 @@ def _make_respond_node(orchestrator: ModelOrchestrator, config: AgentConfig):
         missing = state.get("missing", [])
         progressed = bool(state.get("progressed"))
         # Sem LLM real (stub de CI/local), a resposta DETERMINÍSTICA conduz o slot-filling — melhor que o
-        # eco do stub; o número/decisão da cotação já vêm do business (não do LLM).
-        if config.provider != "openai":
+        # eco do stub; o número/decisão da cotação já vêm do business (não do LLM). Qualquer provider real
+        # (openai/anthropic) passa a gerar a frase; se ele falhar, o orchestrator devolve None e cai aqui.
+        if config.provider == "stub":
             return {"reply": _fallback_reply(missing, progressed)}
         filled = ", ".join(f"{k}={v}" for k, v in (state.get("slots") or {}).items()) or "nenhum ainda"
         faltam = ", ".join(_SLOT_LABELS.get(m, m) for m in missing) or "nada (dados completos)"

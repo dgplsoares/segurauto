@@ -20,8 +20,9 @@ logger = logging.getLogger("segurauto")
 async def lifespan(app: FastAPI):
     s = get_settings()
     logger.info(
-        "ai-service iniciando env=%s llm_provider=%s openai_key=%s fake_crm=%s fake_ads=%s",
-        s.environment, s.llm_provider, s.masked_openai_key, s.use_fake_crm, s.use_fake_ads,
+        "ai-service iniciando env=%s llm_provider=%s openai_key=%s anthropic_key=%s fake_crm=%s fake_ads=%s",
+        s.environment, s.llm_provider, s.masked_openai_key, s.masked_anthropic_key,
+        s.use_fake_crm, s.use_fake_ads,
     )
     yield
     logger.info("ai-service encerrando")

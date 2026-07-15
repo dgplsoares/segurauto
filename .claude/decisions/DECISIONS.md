@@ -383,3 +383,19 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   marketplace = V2). O handoff reusa a flag ortogonal existente + intent na outbox (handler fake).
 - **Trade-off:** confirmação por botão (explícita/testável) em vez de NLU; ações fakes idempotentes que
   espelham o contrato real (o adapter real entra por `.env`, sem tocar no domínio).
+
+### DEC-ORB-046 — F8a: provider LLM real (OpenAI + Anthropic) + fallback resiliente
+- **Contexto:** habilitar um provider real por `.env` (mantendo o stub como default/CI) e decidir o
+  comportamento quando o real falha (incidente ou saldo de tokens esgotado).
+- **Escolha:** `get_llm()` vira factory de **3 vias** (`stub | openai | anthropic`), modelo por ENV
+  (`ANTHROPIC_MODEL` default `claude-opus-4-8`; recomenda-se `claude-haiku-4-5` p/ custo). Os adapters
+  (SDK **lazy**, opt-in no `requirements`) normalizam falhas em **`LLMError(retryable, reason)`**; o
+  `ModelOrchestrator` **classifica**: `401`/`insufficient_quota`/billing = **não-retryable → abre o
+  circuit-breaker e NÃO retenta** (retry só queimaria tempo/saldo); `429`/`5xx`/`timeout` retentam com
+  backoff e **degradam** ao esgotar. **Circuit-breaker por provider** (protege latência **e** saldo numa
+  incidência) + métricas `llm_error_total{reason}` / `llm_fallback_total{agent}`. A degradação é o
+  **comportamento DETERMINÍSTICO já existente** (cotação/handoff seguem funcionando) — **nunca** o eco do
+  stub (`"[stub] ..."` vazaria), **nunca** erro cru. Os 2 checks literais `"openai"` viraram `!= "stub"`
+  (Anthropic passa a dirigir converse + qualification).
+- **Trade-off:** confirmação de que a degradação determinística > fallback-para-stub/erro-cru; +2 SDKs no
+  requirements (opt-in) e um breaker/classificador, em troca de resiliência real a incidente/saldo zerado.

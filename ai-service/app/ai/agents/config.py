@@ -27,10 +27,20 @@ CONVERSE_SYSTEM_PROMPT = (
 )
 
 
+def _model_for(provider: str) -> str:
+    """Modelo por provider (para o log do turno; o adapter lê o mesmo de `get_settings`)."""
+    s = get_settings()
+    if provider == "openai":
+        return s.openai_model
+    if provider == "anthropic":
+        return s.anthropic_model
+    return "stub"
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     name: str
-    provider: str  # stub | openai
+    provider: str  # stub | openai | anthropic
     model: str = "gpt-4o-mini"
     temperature: float = 0.2
     max_tokens: int = 200
@@ -51,16 +61,19 @@ def get_qualification_config() -> AgentConfig:
     return AgentConfig(
         name="qualification",
         provider=provider,
-        use_llm_assess=(provider == "openai"),
+        model=_model_for(provider),
+        use_llm_assess=(provider != "stub"),  # qualquer provider real habilita a justificativa via LLM
         system_prompt=QUALIFICATION_SYSTEM_PROMPT,
     )
 
 
 @lru_cache
 def get_support_config() -> AgentConfig:
+    provider = get_settings().llm_provider.lower()
     return AgentConfig(
         name="support",
-        provider=get_settings().llm_provider.lower(),
+        provider=provider,
+        model=_model_for(provider),
         system_prompt=SUPPORT_SYSTEM_PROMPT,
         rejection_message=SUPPORT_REJECTION,
     )
@@ -68,9 +81,11 @@ def get_support_config() -> AgentConfig:
 
 @lru_cache
 def get_converse_config() -> AgentConfig:
+    provider = get_settings().llm_provider.lower()
     return AgentConfig(
         name="converse",
-        provider=get_settings().llm_provider.lower(),
+        provider=provider,
+        model=_model_for(provider),
         system_prompt=CONVERSE_SYSTEM_PROMPT,
         rejection_message=SUPPORT_REJECTION,
     )
