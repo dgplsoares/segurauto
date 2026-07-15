@@ -221,3 +221,27 @@ Plano-mestre em `fase-3/`. Decisões DEC-ORB-022..033 formalizadas. Reanálise d
 - **Sem outra mudança de escopo. Fase 3.5 concluída.** Próximo: **F4** — auth/OTP + support single-turn + LP.
 
 **Verificado (3.5):** `ruff` limpo + `pytest` **42/42**; docker (409 no LEAK-1, X-Request-Id não-ecoado, PII mascarada). ✅
+
+---
+
+## Fase 4 — Auth + Suporte + LP (refatiada em 4a/4b/4c)
+
+Plano-mestre em `fase-4/`. Reanálise dedicada por subfase (contexto fresco → antecipar gaps).
+
+**Reanálise-mestre (antes):**
+- **4a — Auth/OTP** (DEC-ORB-037, já desenhado + verificado por pentest): tabelas `auth_sessions`/`otp_codes`
+  (migration 0003), `AuthService`/`OtpService`, `NotificationPort` fake, `/auth/request-otp` +
+  `/auth/verify-otp`, dependency **`require_session`** (token→lead_id), **sessão só pós-OTP**, e-mail =
+  identidade **sem UNIQUE**, OTP **cooldown-não-burn** + rate-limit, sliding+absoluto. É o **pré-requisito**.
+- **4b — support_agent single-turn** (RAG): grafo LangGraph `guardrail_in → retrieve → validate → generate
+  → guardrail_out → handoff`; `AiPort.support` real + `POST /ai/support` (stateless); `POST /support/chat`
+  no `business` **autenticado por `require_session`** (anti-IDOR). **Single-turn = stateless** → histórico
+  persistente (`chat_sessions`/`chat_messages`) só na **F5** (multi-turn). RAG genérico compartilhado (sem
+  dado de lead no vector store). Guardrail de prompt-injection (scope-and-strip).
+- **4c — LP conectada** (Next.js do Figma Make): `LeadForm` → `/api/lead` (BFF) → `/leads`; **modal de OTP**
+  (botão "Já tem cadastro? Entre", 5 campos, timer 30s); `SupportChat` → `/api/support`. Validação
+  client+server; consent LGPD no modal.
+- **Riscos:** 4a é o mais crítico (implementar exatamente o desenho reconciliado do pentest — cooldown-não-burn,
+  fail-closed do pepper); integração do export do Figma Make (deps próprias) na 4c; manter support stateless.
+
+**Descobertas (depois):** _(por subfase)_

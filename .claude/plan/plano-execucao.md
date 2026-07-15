@@ -62,38 +62,53 @@ enriquecimento de **background** do lead (qualificar + sincronizar CRM/Ads), **i
 
 > **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase (contexto fresco → antecipar gaps).
 
-## Roadmap reescopado (aprovado)
-A análise do fluxo E2E (chat-first de cotação) mostrou que o happy path é maior que o roadmap original:
-- **Fase 3** (3a/3b/3c) — enriquecimento de background (RAG + qualificação + worker). *(3c inclui o
-  **plumbing de Click_ID/UTM**: colunas `utm_*`/`click_id` no lead via migration aditiva + a conversão
-  carregando o `click_id`.)*
-- **Fase 3.5 — Hardening** (rápido, fecha bugs reais já): correção do **LEAK-1** (dedup não vaza
-  `score`/`band`; 409 em colisão de key) + **endurecimento de observabilidade** (`X-Request-Id` só de
-  origem confiável e não-ecoado; middleware pure-ASGI; masking de PII seguro; `echo=off`). Decisões
-  DEC-ORB-035/036. *(Auth/OTP desenhado e aprovado — DEC-ORB-037 — mas implementado no início da F4.)*
-- **Fase 4** — **início: auth/OTP** (DEC-ORB-037: token→lead_id, sessão só pós-OTP, e-mail=identidade sem
-  UNIQUE) + `require_session`/anti-IDOR; depois **suporte single-turn** (RAG) + LP conectada. Ver
-  [`../docs/isolamento-leads.md`](../docs/isolamento-leads.md).
-- **Fase 5** — conversa de cotação (prompt no hero → chat multi-turn → `quote_tool`(CRM) → PDF). *(Inclui o
-  **serviço fake de UTM no frontend**: coleção de 4 campanhas fake — 2 Meta Ads + 2 Google Ads — sorteando
-  uma por submissão de lead.)*
-- **Fase 6** — personalização + ações (email/WhatsApp/SMS via outbox) + atribuição por Click_ID.
-- **Fase 7** — CI + entrega.
+> Reescopo do roadmap (E2E chat-first) aprovado — DEC-ORB-033. **V1 = F0→F4** (núcleo + 1º contato com a
+> IA autenticado); **V1.5 = F5/F6** (cotação conversacional + ações); **F7 = CI/entrega**. RBAC/painel
+> admin/marketplace multi-seguradora = **V2**.
 
-Auth/conta completa (RBAC) e marketplace multi-seguradora = **V2**.
+## Fase 3.5 — Hardening (LEAK-1 + observabilidade)  ·  concluída
+Meta: fechar os bugs reais da auditoria adversarial antes do chat.
 
-## Fase 4 — Agente de suporte + LP conectada  ·  ~0.7h
-Meta: suporte via RAG e a Landing Page real consumindo a API pelo BFF.
+- [x] **LEAK-1** (DEC-ORB-035): `LeadResponse` sem `score`/`band`; dedup compara e-mail (dono→200 mínimo, colisão de key→**409 neutro**); log de conflito só com `key_sha`. Sem `UNIQUE(email)` (DEC-ORB-037).
+- [x] **Observabilidade** (DEC-ORB-036): `RequestIdMiddleware` **pure-ASGI**; `X-Request-Id` só de origem confiável e **nunca ecoado**; **masking central de PII** seguro (sem corromper UUID); `echo=off`.
+- [x] Auth/OTP **desenhado e aprovado** via pentest adversarial (DEC-ORB-037) → implementa na F4.
+- **Verificado:** `ruff` + `pytest` **42/42**; docker (409 no LEAK-1, X-Request-Id não-ecoado, PII mascarada). ✅
 
-- [ ] `POST /support/chat` → `support_agent` (LangGraph, RAG single-turn) reusando `RagService`/orchestrator
-- [ ] Frontend Next.js: `LeadForm` → `/api/lead` (BFF) → `/leads`; `SupportChat` → `/api/support`
-- [ ] Validação client + server; `Idempotency-Key` gerada no client
-- **Verificar:** teste do BFF/form (mock do ai-service) + smoke E2E: enviar lead pela LP persiste e (via worker) sincroniza; chat responde do RAG.
+## Fase 4 — Auth + Suporte + LP  (refatiada em 4a/4b/4c)
+**Plano-mestre e subfases em [`fase-4/`](fase-4/README.md).** Primeiro contato do lead com a IA — autenticado e isolado.
 
-## Fase 5 — CI + verificação Docker + entrega  ·  ~0.6h
+- [ ] **4a — Auth/OTP** ([`fase-4/4a-auth-otp.md`](fase-4/4a-auth-otp.md)) (DEC-ORB-037): tabelas `auth_sessions`/`otp_codes` (migration 0003), `AuthService`/`OtpService`, `NotificationPort` fake, `/auth/request-otp` + `/auth/verify-otp`, **`require_session`** (token→lead_id); sessão **só pós-OTP**, e-mail=identidade sem UNIQUE, OTP **cooldown-não-burn** + rate-limit, sliding+absoluto. *Verif.:* OTP válido/expirado/errado/reuso, rate-limit, sessão expira, anti-lockout.
+- [ ] **4b — support_agent single-turn** ([`fase-4/4b-support-agent.md`](fase-4/4b-support-agent.md)): grafo LangGraph `guardrail_in→retrieve→validate→generate→guardrail_out→handoff`; `AiPort.support` + `POST /ai/support` (stateless); `POST /support/chat` **autenticado** (`require_session`, anti-IDOR); `rag_mode=rag_preferred`. *Verif.:* resposta grounded, recusa se insuficiente, guardrail de injeção, chat exige sessão.
+- [ ] **4c — LP conectada** ([`fase-4/4c-lp-conectada.md`](fase-4/4c-lp-conectada.md)): Next.js (Figma Make) — `LeadForm`→`/api/lead` (BFF)→`/leads`; **modal de OTP** (botão "Já tem cadastro? Entre", 5 campos, timer 30s); `SupportChat`→`/api/support`; consent LGPD. *Verif.:* teste do BFF/form + smoke E2E.
+
+> **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase.
+
+## Fase 5 — Conversa de cotação (multi-turn)  ·  V1.5
+Meta: o happy path chat-first (prompt no hero → coleta multi-turn → cotação no CRM → PDF).
+
+- [ ] Entrada **prompt-first no hero** + extração de slots (DEC-ORB-027)
+- [ ] Agente conversacional **multi-turn** (slot-filling: veículo, CEP, *tem corretor?/código*) com **sessão persistida** (`chat_sessions`/`chat_messages` escopados, `UNIQUE(session_id,seq)`, lock por sessão) — invariantes de `../docs/isolamento-leads.md`
+- [ ] Tools **read-inline**: `quote_tool`(CRM `price_quote`) + `pdf_tool` (fake) — o número da cotação vem do **tool**, nunca do LLM
+- [ ] Serviço **fake de UTM** no frontend (4 campanhas: 2 Meta + 2 Google, sorteio por submissão)
+- **Verificar:** coleta → cotação estruturada + PDF; isolamento de sessão; guardrail nos args das tools.
+
+## Fase 6 — Personalização + Ações + Click_ID  ·  V1.5
+Meta: personalizar a cotação e disparar ações via outbox.
+
+- [ ] Personalização/re-cotação (seleção de coberturas) — marketplace multi-seguradora = V2
+- [ ] Ações **write-through-outbox**: `crm_update` / `notify` (email/WhatsApp/SMS via `NotificationPort` fake) / `conversion` — só após **confirmação explícita**, idempotentes por `event_id=(session,tipo,turno)`
+- [ ] **Handoff humano**: detectar + flag ortogonal + mensagem honesta + intent na outbox (handler fake)
+- [ ] Atribuição por **Click_ID**: capturar gclid/fbclid na LP → persistir no lead → enviar na conversão
+- **Verificar:** ação 2× → efeito 1×; conversão com `click_id` deduplicada.
+
+## Fase 7 — CI + verificação Docker + entrega
 Meta: gate automatizado e stack reprodutível do zero.
 
 - [ ] `.github/workflows/ci.yml`: job **ai-service** (pytest mock + ruff), job **frontend** (build + test), job **docker build**
-- [ ] `/metrics` completo + README de entrega (stack, fake vs real, decisões, observabilidade, próximos passos)
+- [ ] `/metrics` completo + **README de entrega** (stack, fake vs real, decisões, observabilidade, próximos passos)
 - [ ] Reconciliar `diario-de-fases.md` + `mem_session_summary`
-- **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST de lead persiste + (worker) sincroniza fakes, `/health` OK.
+- **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST persiste + (worker) sincroniza fakes, `/health` OK.
+
+## Fora do V1
+Painel admin / RBAC / contas completas (V2 — `roadmap-v2.md`), marketplace multi-seguradora, notificações
+**reais** (email/WhatsApp/SMS), cache semântico de LLM (DEC-ORB-029), embedder real leve.
