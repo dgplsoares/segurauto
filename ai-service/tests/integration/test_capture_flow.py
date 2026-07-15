@@ -63,3 +63,21 @@ async def test_missing_consent_is_rejected(client):
     bad = {**LEAD, "consent": False}
     resp = await client.post("/leads", json=bad, headers={"Idempotency-Key": "key-noconsent"})
     assert resp.status_code == 422
+
+
+async def test_key_collision_different_email_is_409(client, db_engine):
+    """LEAK-1: reusar a key de outra identidade não pode devolver dados dela."""
+    headers = {"Idempotency-Key": "collide-1"}
+    r1 = await client.post("/leads", json=LEAD, headers=headers)  # ana@example.com
+    assert r1.status_code == 201
+    r2 = await client.post("/leads", json={**LEAD, "email": "mallory@evil.com"}, headers=headers)
+    assert r2.status_code == 409
+    body = r2.json()
+    assert "id" not in body and "score" not in body and "band" not in body  # não vaza NADA do outro lead
+    assert await _count_leads(db_engine, "collide-1") == 1  # segue 1 lead (o do dono)
+
+
+async def test_capture_response_omits_score_band(client):
+    r = await client.post("/leads", json=LEAD, headers={"Idempotency-Key": "noscore-1"})
+    assert r.status_code == 201
+    assert "score" not in r.json() and "band" not in r.json()  # qualificação nunca na resposta pública

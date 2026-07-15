@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Embeddings — stub determinístico default; OpenAI opt-in (DEC-ORB-023)
     embeddings_provider: str = "stub"  # stub | openai
 
+    # Correlação: segredo compartilhado com o BFF p/ assinar X-Request-Id (DEC-ORB-036). Sem ele,
+    # o request_id é sempre gerado server-side (seguro por default).
+    trusted_proxy_secret: str | None = None
+
     @property
     def masked_openai_key(self) -> str:
         """Nunca logar a chave em claro (DEC-ORB-018 — PII/segredos)."""

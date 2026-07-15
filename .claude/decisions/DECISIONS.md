@@ -241,3 +241,38 @@
   e marketplace multi-seguradora = **V2**.
 - **Trade-off:** roadmap maior que o corte vertical original, protegendo o V1 que fecha e empurrando o
   conversacional para V1.5.
+
+---
+
+## Hardening / Auth (Fase 3.5)
+
+### DEC-ORB-034 — RETIRADA
+`funnel_status` foi descartado: a aplicação **não é um CRM** e não gerencia o funil de vendas (isso é do
+CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento-leads.md` e o diário.
+
+### DEC-ORB-035 — Correção do LEAK-1 (captura não vaza qualificação de outro lead)
+- **Contexto:** verificação adversarial achou que o dedup do `POST /leads` retornava `id`+`score`+`band`
+  de outro lead se a `Idempotency-Key` colidisse (a key é client-controlled).
+- **Escolha:** `LeadResponse` **não** expõe `score`/`band`; no dedup, compara-se o **e-mail normalizado**:
+  dono legítimo (mesmo e-mail) → 200 `{id, status, deduped}`; colisão de key com outra identidade → **409
+  neutro** (sem `id`/`status`/`score`/`band`/e-mail). Log de conflito com `sha256` da key (sem PII).
+- **Trade-off:** +1 comparação e um 409 que revela apenas "esta key é de outra identidade" (keys são UUID,
+  colisão negligível), em troca de eliminar a impersonação.
+
+### DEC-ORB-036 — Endurecimento de observabilidade (correlação ≠ autorização; PII)
+- **Escolha:** `X-Request-Id` **só de origem confiável** (assinado pelo BFF via `trusted_proxy_secret`),
+  **nunca ecoando** valor do cliente; middleware de correlação vira **pure-ASGI** (sobrevive ao streaming
+  do chat da F4); **masking central de PII** seguro (e-mail + CPF formatado + placa maiúscula — **sem**
+  regex genérico que corromperia UUID/quebraria a correlação) + `echo=off` explícito na engine.
+- **Trade-off:** exige segredo compartilhado BFF↔ai-service (sem ele, correlação cai para server-side,
+  seguro por default) e custo de regex por linha; fecha spoofing de correlação e vazamento de PII.
+
+### DEC-ORB-037 — Auth por token + OTP (desenho aprovado; **implementar no início da F4**)
+- **Escolha:** sessão = **token opaco server-side** (`secrets`, guardado como `sha256`) → `lead_id`, via
+  dependency `require_session` (base do anti-IDOR do chat); **sessão só nasce pós-OTP** (prova de posse do
+  inbox — fecha email-squat); **sliding ~30min + TTL absoluto**; **identidade = e-mail verificado, sem
+  `UNIQUE(email)`** (permite múltiplos leads/pessoa; tabela `identities` = V2); **OTP 5 dígitos** hasheado
+  (HMAC+pepper), **não consumido em tentativa errada** (cooldown/backoff por `email[,IP]`), rate-limit,
+  uso único, TTL ~10min; **enumeração aceita + rate-limit** (IP/captcha = V2); `NotificationPort` fake (real pós-V1).
+- **Trade-off:** +tabelas e um passo de OTP antes do chat, em troca de auth real desacoplada de campo
+  client-controlled. Reconcilia os furos do pentest (workspace/10). **Implementação no início da F4** (junto do chat que a consome).

@@ -15,7 +15,10 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True, future=True)
+        # echo=False explícito: nunca logar SQL com parâmetros (PII) — DEC-ORB-036.
+        _engine = create_async_engine(
+            get_settings().database_url, pool_pre_ping=True, future=True, echo=False
+        )
     return _engine
 
 

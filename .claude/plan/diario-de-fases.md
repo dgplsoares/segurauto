@@ -184,3 +184,40 @@ Plano-mestre em `fase-3/`. Decisões DEC-ORB-022..033 formalizadas. Reanálise d
   (pré-F4), começando pela correção do LEAK-1 e o design do auth/OTP.
 
 **Verificado (3c):** `ruff` limpo + `pytest` **37/37**; e2e Docker (worker separado → lead `synced`, correlação preservada). ✅
+
+---
+
+## Fase 3.5 — Hardening / Auth
+
+**Reanálise (antes) — dedicada + pentest adversarial (deu `holds=false`, 7 furos):**
+- **Método:** workflow de 3 desenhistas (escopo+LEAK-1, auth/OTP, isolamento) + pentest adversarial. O
+  pentest achou 7 furos, vários por **contradição entre as trilhas** (ex.: `UNIQUE(email)` vs "2 leads
+  legítimos"). Detalhe: `workspace/10`.
+- **Decisões do usuário:** (D1) **hardening rápido agora na 3.5; auth/OTP no início da F4**; (D2) **e-mail =
+  identidade, SEM `UNIQUE(email)`** (permite 2º veículo/re-cotação); (D3) **sessão só pós-OTP**. Isso fecha
+  os furos B1/B3/B4/B5 do pentest.
+- **Escopo da 3.5 (agora):** (a) **correção do LEAK-1** — `LeadResponse` perde `score`/`band`; no dedup
+  compara e-mail normalizado → dono (mesmo e-mail) 200 `{id,status,deduped}`, colisão de key → **409
+  neutro**; sem `UNIQUE(email)`, capturas concorrentes mesmo-email/chave-dif geram leads distintos (sem
+  500). (b) **endurecimento de observabilidade** — `X-Request-Id` só de origem confiável e **nunca
+  ecoado**; middleware **pure-ASGI** (pré-streaming); **masking de PII** central seguro (e-mail + CPF
+  formatado + placa maiúscula; **sem** regex genérico que corrompe UUID) + `echo=off`.
+- **Auth/OTP (design aprovado, implementar na F4):** token opaco server-side → `lead_id` via
+  `require_session`; sessão **só pós-OTP** (sliding ~30min + TTL absoluto); OTP 5 díg. hasheado, **não
+  consome código em tentativa errada** (cooldown/backoff por email[,IP]); rate-limit; identidade=e-mail
+  verificado sem UNIQUE; enumeração aceita+rate-limit (IP/captcha V2); `NotificationPort` fake.
+- **Riscos:** masking por regex pode corromper UUID (mitigado: e-mail/CPF-formatado/placa-maiúscula,
+  testado contra UUID); pure-ASGI pode regredir correlação (teste de concorrência).
+
+**Descobertas (depois):**
+- **LEAK-1 corrigido e verificado:** POST com key de outra identidade → **409 neutro** (`{"detail":
+  "idempotency_key_conflict"}`), sem `id`/`score`/`band`/e-mail; resposta de captura **sem `score`/`band`**.
+- **Obs endurecida (verificado):** `X-Request-Id` forjado **não é ecoado** (resposta traz rid server-side);
+  middleware **pure-ASGI**; **masking central** redige e-mail/CPF-formatado/placa **sem corromper UUID**
+  (testado); e-mail cru **ausente** dos logs; conflito logado só com `key_sha`.
+- **Sem `UNIQUE(email)`** (D2): capturas concorrentes mesmo-email/chave-diferente geram leads distintos —
+  **não** há o 500 que o pentest apontou (B5) nem enumeração via 409 no cadastro (B1).
+- **Auth/OTP:** desenho reconciliado e **aprovado (DEC-ORB-037)**; implementação no **início da F4** (junto do chat).
+- **Sem outra mudança de escopo. Fase 3.5 concluída.** Próximo: **F4** — auth/OTP + support single-turn + LP.
+
+**Verificado (3.5):** `ruff` limpo + `pytest` **42/42**; docker (409 no LEAK-1, X-Request-Id não-ecoado, PII mascarada). ✅

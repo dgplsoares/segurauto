@@ -67,10 +67,13 @@ A análise do fluxo E2E (chat-first de cotação) mostrou que o happy path é ma
 - **Fase 3** (3a/3b/3c) — enriquecimento de background (RAG + qualificação + worker). *(3c inclui o
   **plumbing de Click_ID/UTM**: colunas `utm_*`/`click_id` no lead via migration aditiva + a conversão
   carregando o `click_id`.)*
-- **Fase 3.5 — Hardening / Auth** (pré-requisito das Fases 4+): correção do **LEAK-1** + invariantes de
-  isolamento + **primitivo de auth (token server-side → lead_id)** + **login OTP e ciclo de vida da sessão**
-  (ver [`../docs/isolamento-leads.md`](../docs/isolamento-leads.md)). *Design dedicado no início desta fase.*
-- **Fase 4** — suporte single-turn + LP conectada.
+- **Fase 3.5 — Hardening** (rápido, fecha bugs reais já): correção do **LEAK-1** (dedup não vaza
+  `score`/`band`; 409 em colisão de key) + **endurecimento de observabilidade** (`X-Request-Id` só de
+  origem confiável e não-ecoado; middleware pure-ASGI; masking de PII seguro; `echo=off`). Decisões
+  DEC-ORB-035/036. *(Auth/OTP desenhado e aprovado — DEC-ORB-037 — mas implementado no início da F4.)*
+- **Fase 4** — **início: auth/OTP** (DEC-ORB-037: token→lead_id, sessão só pós-OTP, e-mail=identidade sem
+  UNIQUE) + `require_session`/anti-IDOR; depois **suporte single-turn** (RAG) + LP conectada. Ver
+  [`../docs/isolamento-leads.md`](../docs/isolamento-leads.md).
 - **Fase 5** — conversa de cotação (prompt no hero → chat multi-turn → `quote_tool`(CRM) → PDF). *(Inclui o
   **serviço fake de UTM no frontend**: coleção de 4 campanhas fake — 2 Meta Ads + 2 Google Ads — sorteando
   uma por submissão de lead.)*

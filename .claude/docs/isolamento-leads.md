@@ -7,16 +7,14 @@
 Leads/outbox estão isolados por `id` (repos/services por request, sessão nova por request, sem estado
 mutável global que vaze PII). **Mas** a base de identidade é frágil (ver LEAK-1) e não há auth.
 
-## 🔴 Achado crítico (a corrigir)
-**LEAK-1 — `Idempotency-Key` como âncora de identidade.** A key é fornecida pelo cliente
-(`POST /leads`). No caminho de dedup, a resposta hoje devolve `id`+`score`+`band` do lead existente. Se
-duas requisições colidem/adivinham a mesma key, um lead recebe dados de **outro**. Quando o `lead_id`
-ancorar a sessão de chat, isso vira impersonação.
+## ✅ LEAK-1 — CORRIGIDO na Fase 3.5 (era achado crítico) — DEC-ORB-035
+**Era:** `Idempotency-Key` (client-controlled) como âncora de identidade — o dedup do `POST /leads`
+devolvia `id`+`score`+`band` do lead existente; key colidida vazava dados de **outro** lead.
 
-**Correção mínima (aplicável já):**
-- No dedup, **não** retornar dados materiais quando a chave não pertence ao principal atual: devolver
-  `{deduped:true}` mínimo (sem `score`/`band`) ou **409** em colisão.
-- A resposta de captura não precisa expor `score`/`band` (são calculados async; nulos na captura).
+**Corrigido:** `LeadResponse` **não** expõe `score`/`band`; no dedup compara-se o **e-mail normalizado** —
+dono legítimo → 200 `{id,status,deduped}`; colisão de key com outra identidade → **409 neutro** (sem
+`id`/`score`/`band`/e-mail). Verificado (`pytest` + docker). Sem `UNIQUE(email)` (DEC-ORB-037): não há
+enumeração via 409 no cadastro nem 500 em corrida mesmo-email/chave-diferente.
 
 ## Invariantes obrigatórias (Fase 4+)
 

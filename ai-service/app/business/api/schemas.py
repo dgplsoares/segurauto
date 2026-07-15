@@ -22,8 +22,7 @@ class LeadCreate(BaseModel):
 
 
 class LeadResponse(BaseModel):
+    # NÃO expõe score/band (qualificação): dado de CRM calculado async — vazaria no dedup (LEAK-1/DEC-ORB-035).
     id: str
     status: str
     deduped: bool
-    score: int | None = None
-    band: str | None = None

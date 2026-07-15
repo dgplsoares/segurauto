@@ -1,18 +1,18 @@
-"""`POST /leads` — captura atômica e idempotente (DEC-ORB-011/012/013).
+"""`POST /leads` — captura atômica e idempotente (DEC-ORB-011/012/013/035).
 
-Fluxo: valida → dedup por `Idempotency-Key` → persiste lead + intent na outbox (MESMA transação,
-commit no endpoint) → 201. Sob corrida, `IntegrityError` na UNIQUE vira dedup → 1 lead garantido.
-Não chama CRM/Ads (worker da Fase 3).
+Fluxo: valida → dedup por `Idempotency-Key` (comparando e-mail) → persiste + intent na outbox (MESMA
+transação, commit no endpoint) → 201. Retry do dono → 200. **Colisão de key com outra identidade → 409
+neutro** (não vaza dados de outro lead). Não chama CRM/Ads (worker da Fase 3).
 """
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.api.schemas import LeadCreate, LeadResponse
 from app.business.repository.lead_repository import LeadRepository
-from app.business.service.lead_service import LeadService
+from app.business.service.lead_service import CONFLICT, DEDUP, LeadService
 from app.shared.database import get_session
 from app.shared.metrics import LEADS_CAPTURED
 from app.shared.observability import request_id_ctx
@@ -31,7 +31,7 @@ async def create_lead(
     request_id = request_id_ctx.get()
     service = LeadService(LeadRepository(session))
     try:
-        row, deduped = await service.capture(
+        row, kind = await service.capture(
             idempotency_key=key,
             name=payload.name,
             email=str(payload.email),
@@ -44,12 +44,13 @@ async def create_lead(
         )
         await session.commit()
     except IntegrityError:
-        # Corrida: outra requisição com a mesma chave venceu a UNIQUE → tratamos como dedup.
         await session.rollback()
-        row = await LeadRepository(session).get_by_idempotency_key(key)
-        deduped = True
+        row, kind = await service.resolve_after_conflict(idempotency_key=key, email=str(payload.email))
 
-    LEADS_CAPTURED.labels(result="deduped" if deduped else "created").inc()
-    if deduped:
+    LEADS_CAPTURED.labels(result=kind).inc()
+    if kind == CONFLICT:
+        # Neutro: não devolve id/status/score/band/e-mail de outra identidade (LEAK-1).
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="idempotency_key_conflict")
+    if kind == DEDUP:
         response.status_code = status.HTTP_200_OK
-    return LeadResponse(id=row.id, status=row.status, deduped=deduped, score=row.score, band=row.band)
+    return LeadResponse(id=row.id, status=row.status, deduped=(kind == DEDUP))
