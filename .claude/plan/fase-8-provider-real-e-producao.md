@@ -68,7 +68,10 @@ Mover o dataclass `QualificationResult`/`QualificationBand` de `ai/` para `app/s
 Refactor mecânico: mover o módulo, reapontar imports em `ai/` e `business/`, rodar `ruff` + suíte completa.
 Verificar novamente que **cross-import business↔ai = 0** (a invariante do DEC-ORB-021).
 
-## 8d — Deploy em produção (co-hosting seguro, isolado)
+## 8d — Deploy (HOMOLOG remoto que funciona como prod, co-hosting seguro, isolado)
+
+> O alvo `app-segurauto.diogosoares.com.br` é um **homolog** — funciona como prod, mas **não é indexado** por
+> buscadores (`ALLOW_INDEXING=false` → `noindex` + `robots.txt disallow`). Na prod real, ligar `ALLOW_INDEXING=true`.
 
 **Arquitetura (neutra):** o servidor de destino já expõe a web atrás de um **reverse proxy compartilhado**
 que roteia por host/path e termina TLS no **edge (Cloudflare)**, falando HTTP com a origem. O SegurAuto entra
