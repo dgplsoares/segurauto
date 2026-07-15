@@ -305,3 +305,46 @@ Plano-mestre em `fase-4/`. Reanálise dedicada por subfase (contexto fresco → 
 - **Sem mudança de escopo. 4b concluída.** Próximo: **4c** (LP conectada — Next.js + modal OTP + BFF).
 
 **Verificado (4b):** `ruff` limpo + `pytest` **58/58**; docker (`/support/chat` 401 sem token, `/ai/support` in/out-domain). ✅
+
+### Fase 4c — Landing Page conectada (Next.js)
+
+**Reanálise (antes):**
+- **Decisão do usuário:** LP funcional **mínima** em Next.js (form + modal OTP + chat) — só elementos
+  funcionais para **smoke visual**; reconciliável depois com o export do Figma Make.
+- **Atualizar `arquitetura-visual-lp.md`** para o **hero prompt-first**: um **campo de prompt central**
+  (abaixo do título/subtítulo, mensagem convidativa/animada) no lugar do CTA principal — o doc vai para o
+  Figma Make compor a LP final. (Conecta com a conversa de cotação da F5.)
+- **BFF** (route handlers): `/api/lead`, `/api/auth/request-otp`, `/api/auth/verify-otp`, `/api/support`
+  (proxies finos; escondem a URL interna; repassam o `Bearer`).
+- **Fluxo (state machine):** hero(prompt) → **modal pré-cadastro** (Nome/E-mail/Telefone/Placa + consent
+  LGPD) → `/api/lead` + `request-otp` → **modal OTP** (5 campos + timer 30s) → `verify-otp` → sessão →
+  **chat**. O prompt inicial vira a 1ª mensagem do chat pós-auth.
+- **Token de sessão** em memória (React state) no mínimo; storage real (cookie httpOnly × localStorage) = F5.
+- **Verificação:** build do frontend (`next build`/typecheck) + smoke E2E (stack completa: LP renderiza; lead→OTP→chat).
+- **Riscos:** build do Next.js é pesado; o export do Figma Make vem depois (reconciliar); manter a LP como apresentação fina sobre o BFF.
+
+**Descobertas (depois):**
+- **LP funcional mínima entregue** (`frontend/app/page.tsx`): máquina de estados `hero → signup → login →
+  otp → chat` em um único client component; hero **prompt-first** (campo central + placeholder animado que
+  alterna exemplos), modal de pré-cadastro (Nome/E-mail/Telefone/Placa + consent), **modal OTP** (5 caixas
+  com avanço/retorno de foco + timer regressivo de 30s + "Reenviar"), e **chat** full-page. Estilos inline +
+  `globals.css` (tokens), sem framework — é smoke visual, não o layout final (esse vem do Figma Make).
+- **BFF fino** (`app/api/{lead,auth/request-otp,auth/verify-otp,support}/route.ts` + `lib/bff.ts`): proxies
+  que repassam status/corpo e os headers relevantes (`Idempotency-Key` no lead; `Authorization` no support);
+  `AI_SERVICE_URL` do ambiente; `502 upstream_unreachable` se o ai-service cair. **Zero lógica de negócio.**
+- **Segurança:** `next@14.2.5` tinha vulnerabilidade (aviso do npm, advisory 2025-12-11) → **bump p/
+  `14.2.35`** (patch mais recente da linha 14.2.x); build revalidado.
+- **CEP fora do modal:** o pré-cadastro tem 4 campos (o CEP vai para a conversa na F5); enquanto o backend
+  exige `zipcode`, a LP envia um provisório `"00000000"` (nota registrada no `arquitetura-visual-lp.md`).
+- **OTP não pode ser ecoado no smoke:** o fake de notificação **nunca loga o código** (por design). Logo o
+  passo `verify→sessão` do E2E foi exercido cunhando uma sessão direto no banco (mesmos helpers do backend:
+  `new_session_token`/`token_pk`/`insert_session`); o caminho de **código errado** foi testado pela API real.
+- **Prompt do Figma Make** gerado no chat (paste-ready, PT-BR, neutro), alinhado ao doc atualizado.
+- **Sem mudança de escopo. 4c concluída → FASE 4 COMPLETA → fecha o V1** (captura → qualificação IA → sync
+  CRM/Ads + LP conectada com auth/OTP + suporte por IA). Evolução: **F5** (cotação multi-turn + persistência
+  de chat + UTM no frontend), F6 (personalização/ações), F7 (CI + entrega).
+
+**Verificado (4c):** `next build` (Next 14.2.35) — **typecheck + lint OK**, 4 route handlers dinâmicos + `/`
+estática. **Smoke E2E** na stack real (db+ai-service+worker via Docker, BFF via `next start`): `POST /api/lead`
+**201** + retry mesma key **200** (dedup); `request-otp` **202** neutro; `verify-otp` código errado **401**;
+`/api/support` sem token **401** (anti-IDOR) e com sessão **200** (RAG in-domain; out-domain recusa + handoff). ✅

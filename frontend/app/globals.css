@@ -1,0 +1,29 @@
+/* Reset mínimo + tokens de estilo da LP (smoke test visual — o layout final vem do Figma Make). */
+:root {
+  --primary: #1e3a8a;
+  --accent: #06b6d4;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #cbd5e1;
+  --bg: #f8fafc;
+  --danger: #dc2626;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+button { cursor: pointer; font: inherit; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+input, textarea { font: inherit; }
+input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+a { color: inherit; }
+
+/* Indicador de "digitando…" do chat. */
+@keyframes blink { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.typing span { animation: blink 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
