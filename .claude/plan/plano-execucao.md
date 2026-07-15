@@ -34,14 +34,14 @@ Meta: repo navegável, processo versionado, infra de pé e observabilidade base.
 ## Fase 1 — Contextos + ports/adapters + persistência + outbox  ·  ~0.8h
 Meta: modelar o lead e os seams (incl. o `AiPort` entre `business` e `ai`); persistência resiliente; domínio testável sem infra.
 
-- [ ] Estrutura em contextos: `shared/`, `business/`, `ai/` (ver layout acima)
-- [ ] `business/domain/` puro: `Lead` (com `status`: received→qualifying→qualified→synced/failed), `QualificationResult`
-- [ ] Portas: `business/adapters` → `CrmPort`, `AdsPort` (fakes: `FakeCrm` com tabela de preços, `FakeMetaAds`/`FakeGoogleAds`); `ai/providers` → `LLMPort`, `RerankPort` (fakes: `StubLLM`, `HeuristicRerank`)
-- [ ] **`business/ai_port.py`** — `AiPort` (`qualify`, `support`); adapter **in-process** (na V1 chama `ai/`; na V2 vira HTTP client). Contrato definido já.
-- [ ] `LeadRepository` + `outbox` (`status` pending/done/dead, `retry_count`, **correlação `request_id`/`lead_id`**) + coluna **`idempotency_key` UNIQUE**
-- [ ] **alembic**: migration inicial com **schemas separados** — `business.*` (extensão n/a) para `leads`/`outbox`; `ai.*` para `embeddings`/`documents` + extensão **pgvector**. **Sem FK cruzada.**
-- [ ] `shared/config` (pydantic settings) liga fake/real por env
-- **Verificar:** unit do domínio SEM infra (regras de Lead/score) + teste de contrato dos adapters fake + `AiPort` mockável. Verde em CI sem rede.
+- [x] Estrutura em contextos: `shared/`, `business/`, `ai/` (ver layout acima)
+- [x] `business/domain/` puro: `Lead` (com `status`: received→qualifying→qualified→synced/failed), `QualificationResult`
+- [x] Portas: `business/adapters` → `CrmPort`, `AdsPort` (fakes: `FakeCrm` com tabela de preços, `FakeMetaAds`/`FakeGoogleAds`); `ai/providers` → `LLMPort`, `RerankPort` (fakes: `StubLLM`, `HeuristicRerank`)
+- [x] **`business/ai_port.py`** — `AiPort` (`qualify`, `support`); adapter **in-process** (na V1 chama `ai/`; na V2 vira HTTP client). Contrato definido já.
+- [x] `LeadRepository` + `outbox` (`status` pending/done/dead, `retry_count`, **correlação `request_id`/`lead_id`**) + coluna **`idempotency_key` UNIQUE**
+- [x] **alembic**: migration inicial com **schemas separados** — `business.*` para `leads`/`outbox`; `ai.*` para `documents`/`embeddings` + extensão **pgvector**. **Sem FK cruzada.**
+- [x] `shared/config` (pydantic settings) liga fake/real por env
+- **Verificado:** `ruff` limpo + `pytest` **20/20** (domínio, contrato dos adapters, `AiPort`, providers) SEM infra. Integração: `alembic upgrade head` criou schemas `business`/`ai` + `vector(1536)` + UNIQUE `idempotency_key`; **FK cruzada business↔ai = 0**. ✅
 
 ## Fase 2 — API de captura (fatia vertical, sem IA ainda)  ·  ~0.7h
 Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de plugar o worker/IA.
