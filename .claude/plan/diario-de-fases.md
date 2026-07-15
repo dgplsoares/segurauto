@@ -614,3 +614,23 @@ gate de posse sob `FOR UPDATE`, **idempotente** por marca na sessão (2ª = `alr
 real** (via BFF do frontend + worker container): contrato → `queued` → 2ª = `already_requested`; a jornada
 mostra `ads_conversion×2 (contract_intent, click_id=gclid_SMOKE123) + crm_update + notify_contract [email,
 whatsapp,sms]`, **sem PII**, todas as intents `done`, **zero dead-letters**. ✅
+
+**Revisão adversarial (F6):** workflow de 10 agentes (4 dims + verificação). **4 confirmados** (2 refutados),
+todos MEDIUM — 3 defeitos distintos (2 agentes convergiram no handoff). Corrigidos:
+- **handoff engolido (crítico funcional):** o enqueue de HANDOFF gateava em `handoff_requested_at`, que o
+  DETECTOR do chat também seta (hint, sem enfileirar). Um lead que respondeu "não tenho corretor" no slot e
+  depois clicou "Falar com corretor" recebia `already_requested` **sem enfileirar** — handoff perdido +
+  sucesso falso. Fix: coluna DEDICADA `handoff_confirmed_at` (single-writer, migration 0008), espelhando o
+  padrão limpo do `contract_requested_at`. Teste reproduz o cenário; **smoke E2E:** agora `queued` + evento
+  `handoff` na jornada.
+- **message_id do notify derivado do destinatário:** `sha256(canal:to:template)` de baixa entropia → o
+  telefone era recuperável por brute-force no audit. Fix: id **aleatório** (`secrets.token_hex`), sem derivar
+  de PII.
+- **outcome perdido no unmount (frontend):** o estado "concluído" da confirmação era local ao `QuoteCard`;
+  ao fechar/reabrir o chat os botões reapareciam e o lead podia disparar a ação oposta. Fix: `confirmedOutcome`
+  elevado ao `ChatPanel` (que persiste), zerado só ao iniciar nova sessão.
+- **Refutados (sólidos):** falta de guard "contract" (o `Literal` já valida); `_mask` de telefone curto
+  (telefones reais não são ≤4 chars).
+
+**Verificado (revisão F6):** `ruff` + `pytest` **117** (59 unit + 58 integração) + `next build` + smoke E2E
+do handoff (cenário do defeito → `queued` + evento na jornada). ✅

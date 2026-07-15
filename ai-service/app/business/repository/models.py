@@ -119,6 +119,8 @@ class ChatSessionRow(Base):
     handoff_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     handoff_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     contract_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # F6
+    # Gate da confirmação de handoff (F6) — single-writer, distinto do hint handoff_requested_at (2 writers).
+    handoff_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_turn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

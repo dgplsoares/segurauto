@@ -15,25 +15,36 @@ const COVERAGE_LABELS: Record<string, string> = {
   carro_reserva: "Carro reserva",
 };
 
-export function QuoteCard({ quote, sessionId, token }: { quote: Quote; sessionId?: string; token?: string }) {
+export function QuoteCard({
+  quote,
+  sessionId,
+  token,
+  outcome,
+  onConfirmed,
+}: {
+  quote: Quote;
+  sessionId?: string;
+  token?: string;
+  outcome?: string | null; // vem do pai — PERSISTE ao fechar/reabrir o chat (não pode ser estado local)
+  onConfirmed?: (message: string) => void;
+}) {
   const premium = (quote.premium_cents / 100).toLocaleString("pt-BR", {
     style: "currency",
     currency: quote.currency,
   });
 
   const [pending, setPending] = useState<ConfirmAction | null>(null);
-  const [outcome, setOutcome] = useState<string | null>(null); // mensagem do backend quando concluído
   const [error, setError] = useState(false);
   const canConfirm = Boolean(sessionId && token);
 
   const run = async (action: ConfirmAction) => {
-    if (!sessionId || !token || pending) return;
+    if (!sessionId || !token || pending || outcome) return; // outcome definido → já confirmado
     setPending(action);
     setError(false);
     track("quote_confirm", { action });
     try {
       const res = await confirmAction(sessionId, action, token);
-      setOutcome(res.message);
+      onConfirmed?.(res.message);
     } catch {
       setError(true);
     } finally {
@@ -71,7 +82,7 @@ export function QuoteCard({ quote, sessionId, token }: { quote: Quote; sessionId
       )}
 
       {/* Confirmação → ações (F6). Some após concluído; mostra a mensagem honesta do backend. */}
-      {canConfirm && outcome === null && (
+      {canConfirm && !outcome && (
         <div className="mt-3 grid gap-2">
           <button
             type="button"
@@ -97,7 +108,7 @@ export function QuoteCard({ quote, sessionId, token }: { quote: Quote; sessionId
         </div>
       )}
 
-      {outcome !== null && (
+      {outcome && (
         <div className="mt-3 flex items-start gap-2 rounded-xl bg-accent/10 p-3 text-sm text-foreground">
           <Check className="mt-0.5 size-4 shrink-0 text-accent" />
           <span>{outcome}</span>

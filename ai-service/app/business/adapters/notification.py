@@ -1,8 +1,8 @@
 """Notificações (DEC-ORB-037/045): fake default — loga o destino **mascarado**. O código do OTP só é ecoado
 no log em `ENVIRONMENT=local` (dev affordance p/ smoke visual — "dev mail catcher"); fora de local, nunca.
 Na F6 ganha `notify` multi-canal (email/WhatsApp/SMS) para a confirmação de contrato. Real = pós-V1."""
-import hashlib
 import logging
+import secrets
 from functools import lru_cache
 
 from app.shared.config import get_settings
@@ -32,10 +32,11 @@ class FakeNotification:
             logger.warning("otp_dev_echo email=%s code=%s", _mask(email), code)
 
     async def notify(self, *, channel: str, to: str, template: str, context: dict | None = None) -> str:
-        """Envia uma notificação fake por `channel` (email/whatsapp/sms). Determinístico e sem efeito real;
-        `to` NUNCA é logado cru. Retorna um `message_id` estável por (canal, destino, template)."""
+        """Envia uma notificação fake por `channel` (email/whatsapp/sms). Sem efeito real; `to` NUNCA é
+        logado cru. O `message_id` é ALEATÓRIO (não derivado do destinatário) — evita que o audit, que o
+        persiste, permita recuperar o telefone/e-mail por brute-force."""
         self.sent.append({"channel": channel, "template": template})
-        message_id = f"{channel}_{hashlib.sha256(f'{channel}:{to}:{template}'.encode()).hexdigest()[:16]}"
+        message_id = f"{channel}_{secrets.token_hex(8)}"
         logger.info("notify_sent channel=%s to=%s template=%s", channel, _mask(to), template)
         return message_id
 

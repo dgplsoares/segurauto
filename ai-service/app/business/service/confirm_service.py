@@ -43,9 +43,13 @@ class ConfirmService:
         leads = LeadRepository(self.repo.session)
 
         if action == "handoff":
-            if sess.handoff_requested_at is not None:
+            # Gate na marca DEDICADA da confirmação (single-writer). NÃO usar handoff_requested_at: o
+            # detector do chat também a seta (como hint, sem enfileirar), o que engoliria o enqueue.
+            if sess.handoff_confirmed_at is not None:
                 return self._result(session_id, action, "already_requested", _HANDOFF_MSG)
-            sess.handoff_requested_at = _now()
+            now = _now()
+            sess.handoff_confirmed_at = now
+            sess.handoff_requested_at = sess.handoff_requested_at or now  # mantém o hint coerente
             await leads.enqueue(
                 lead_id=lead_id, intent_type=IntentType.HANDOFF,
                 request_id=request_id, payload={"session_id": session_id},

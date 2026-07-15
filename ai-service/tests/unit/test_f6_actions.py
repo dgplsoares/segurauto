@@ -18,11 +18,13 @@ def test_mask_handles_email_and_phone():
     assert _mask("") == "-"
 
 
-async def test_notify_returns_deterministic_id_and_records_without_pii():
+async def test_notify_returns_random_id_not_derived_from_recipient():
     n = FakeNotification()
     mid1 = await n.notify(channel="whatsapp", to="11999998888", template="quote_confirmation")
     mid2 = await n.notify(channel="whatsapp", to="11999998888", template="quote_confirmation")
-    assert mid1 == mid2 and mid1.startswith("whatsapp_")  # determinístico por (canal, destino, template)
+    assert mid1.startswith("whatsapp_") and mid2.startswith("whatsapp_")
+    assert mid1 != mid2                       # ALEATÓRIO — não brute-forceável a partir do audit
+    assert "11999998888" not in mid1          # o destino não aparece (cru nem derivado) no id
     assert n.sent == [{"channel": "whatsapp", "template": "quote_confirmation"}] * 2  # sem destino cru
 
 

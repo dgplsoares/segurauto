@@ -115,6 +115,27 @@ async def test_confirm_handoff_enqueues_and_records(client, sm, db_engine):
     assert any(e.event_type == "handoff" for e in await _events(db_engine, lead_id))
 
 
+async def test_confirm_handoff_not_swallowed_when_detector_marked_hint(client, sm, db_engine):
+    # Revisão adversarial: o detector do chat seta handoff_requested_at (resposta "não tenho corretor"
+    # no slot) SEM enfileirar. A confirmação explícita PRECISA enfileirar HANDOFF mesmo assim.
+    reset_adapters()
+    lead_id, token = await _auth_lead(sm)
+    sid = await _quoted_session(client, token)  # a msg contém "corretor" → dispara o detector
+    async with db_engine.connect() as conn:
+        marked = (await conn.execute(text(
+            "SELECT handoff_requested_at IS NOT NULL FROM business.chat_sessions WHERE id=:s"), {"s": sid}
+        )).scalar()
+        n_before = (await conn.execute(text(
+            "SELECT count(*) FROM business.outbox WHERE lead_id=:l AND intent_type='handoff'"), {"l": lead_id}
+        )).scalar()
+    assert marked is True and n_before == 0  # hint setado pelo detector, mas nada enfileirado
+
+    r = await client.post(f"/support/sessions/{sid}/confirm", json={"action": "handoff"}, headers=_hdr(token))
+    assert r.status_code == 200 and r.json()["status"] == "queued"  # NÃO 'already_requested'
+    await drain_once(sm)
+    assert any(e.event_type == "handoff" for e in await _events(db_engine, lead_id))
+
+
 async def test_confirm_anti_idor_other_session_is_404(client, sm):
     _, token_a = await _auth_lead(sm, email="a@example.com", key="ka")
     _, token_b = await _auth_lead(sm, email="b@example.com", key="kb")

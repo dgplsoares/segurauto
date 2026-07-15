@@ -24,6 +24,7 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [handoff, setHandoff] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [confirmedOutcome, setConfirmedOutcome] = useState<string | null>(null); // resultado da confirmação (F6)
   const [failed, setFailed] = useState(false); // criação da sessão falhou → oferece "Tentar novamente"
   const scrollRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<string | null>(null);
@@ -57,6 +58,7 @@ export function ChatPanel() {
     const gen = ++genRef.current; // nova geração: continuações antigas passam a ser ignoradas
     lastPromptRef.current = prompt;
     setFailed(false);
+    setConfirmedOutcome(null); // nova sessão → confirmação zerada
     setMessages([{ id: nextId(), role: "user", text: prompt }]);
     setTyping(true);
     try {
@@ -154,7 +156,13 @@ export function ChatPanel() {
               {typing && <TypingBubble />}
 
               {quote && !typing && (
-                <QuoteCard quote={quote} sessionId={sessionRef.current ?? undefined} token={token ?? undefined} />
+                <QuoteCard
+                  quote={quote}
+                  sessionId={sessionRef.current ?? undefined}
+                  token={token ?? undefined}
+                  outcome={confirmedOutcome}
+                  onConfirmed={setConfirmedOutcome}
+                />
               )}
 
               {failed && !typing && (
