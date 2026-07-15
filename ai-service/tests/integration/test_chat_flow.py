@@ -6,6 +6,7 @@ Cobre o happy path e os furos do pentest endereçados nesta fatia: anti-IDOR (E1
 from datetime import datetime, timedelta, timezone
 
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.business.adapters.notification import get_notification
@@ -182,6 +183,30 @@ async def test_get_quote_anti_idor(client, sm):
         json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t"})
     r = await client.get(f"/support/sessions/{sid_a}/quote", headers=_hdr(token_b))  # B lê a cotação de A
     assert r.status_code == 404  # neutro
+
+
+async def test_quote_records_crm_price_quote_event(client, sm, db_engine):
+    """F5b.2 (DEC-ORB-044): a cotação registra a chamada crm_price_quote em integration_events."""
+    _, token = await _auth_lead(sm)
+    sid = await _create_session(client, token)
+    await client.post(f"/support/sessions/{sid}/messages", headers=_hdr(token),
+        json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t"})
+    async with db_engine.connect() as conn:
+        row = (await conn.execute(
+            text("SELECT event_type FROM business.integration_events WHERE session_id=:s"), {"s": sid}
+        )).first()
+    assert row is not None and row.event_type == "crm_price_quote"
+
+
+async def test_otp_records_notify_event_without_code(client, sm, db_engine):
+    """F5b.2: request-otp de lead existente registra notify_otp — NUNCA o código (segurança)."""
+    await _auth_lead(sm, email="otpev@example.com", key="otpev")  # cria o lead
+    assert (await client.post("/auth/request-otp", json={"email": "otpev@example.com"})).status_code == 202
+    async with db_engine.connect() as conn:
+        row = (await conn.execute(
+            text("SELECT request::text AS req FROM business.integration_events WHERE event_type='notify_otp'")
+        )).first()
+    assert row is not None and "purpose" in row.req and "code" not in row.req
 
 
 async def _insert_otp(sm, email: str, code: str) -> None:

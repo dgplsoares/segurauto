@@ -95,3 +95,17 @@ async def test_dead_letter_after_max_retries(client, db_engine, monkeypatch):
         ).one()
     assert row.status == "dead"
     assert row.retry_count == worker.MAX_RETRIES
+
+
+async def test_worker_records_integration_events(client, db_engine):
+    """F5b.2 (DEC-ORB-044): o worker registra as trocas com CRM/Ads em integration_events (jornada)."""
+    sm = async_sessionmaker(db_engine, expire_on_commit=False)
+    lead_id = await _capture(client, "w-audit")
+    await worker.drain_once(sm)
+    async with db_engine.connect() as conn:
+        rows = (
+            await conn.execute(
+                text("SELECT event_type FROM business.integration_events WHERE lead_id=:i"), {"i": lead_id}
+            )
+        ).all()
+    assert sorted(r.event_type for r in rows) == ["ads_conversion", "ads_conversion", "crm_sync"]

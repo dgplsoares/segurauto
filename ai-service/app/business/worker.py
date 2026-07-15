@@ -17,6 +17,7 @@ from app.business.adapters.ads import FakeGoogleAds, FakeMetaAds
 from app.business.adapters.crm import FakeCrm
 from app.business.ai_port import InProcessAiAdapter
 from app.business.domain.events import IntentType, conversion_event_id
+from app.business.repository.integration_events import record_integration_event
 from app.business.repository.lead_repository import LeadRepository
 from app.business.repository.models import LeadRow, OutboxRow
 from app.shared.config import get_settings
@@ -99,14 +100,28 @@ async def _handle(session, row: OutboxRow) -> None:
         )
         lead.status = "synced"
         logger.info("crm_synced lead_id=%s external_id=%s created=%s", lead.id, res.external_id, res.created)
+        await record_integration_event(
+            session, event_type="crm_sync", lead_id=lead.id, request_id=row.request_id,
+            request={"lead_id": lead.id, "email": lead.email, "vehicle": lead.vehicle,
+                     "zipcode": lead.zipcode, "score": lead.score, "band": lead.band},
+            response={"external_id": res.external_id, "created": res.created},
+        )
 
     elif intent == IntentType.ADS_META.value:
         res = await _ads_meta().send_conversion(event_id=conversion_event_id(lead.id, "meta"), lead_id=lead.id)
         logger.info("ads_sent platform=meta lead_id=%s deduped=%s", lead.id, res.deduped)
+        await record_integration_event(
+            session, event_type="ads_conversion", lead_id=lead.id, request_id=row.request_id,
+            request={"platform": "meta", "event_id": res.event_id}, response={"deduped": res.deduped},
+        )
 
     elif intent == IntentType.ADS_GOOGLE.value:
         res = await _ads_google().send_conversion(event_id=conversion_event_id(lead.id, "google"), lead_id=lead.id)
         logger.info("ads_sent platform=google lead_id=%s deduped=%s", lead.id, res.deduped)
+        await record_integration_event(
+            session, event_type="ads_conversion", lead_id=lead.id, request_id=row.request_id,
+            request={"platform": "google", "event_id": res.event_id}, response={"deduped": res.deduped},
+        )
 
     else:
         raise RuntimeError(f"intent desconhecido: {intent}")

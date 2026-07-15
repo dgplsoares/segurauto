@@ -452,3 +452,20 @@ Fatiada: **5b.1** (cotação) + **5b.2** (audit `integration_events`). Reanális
 **Verificado (5b.1):** `ruff` + `pytest` **88** (53 unit + 35 integração — cotação gerada ao completar,
 desconto só p/ corretor autorizado, GET /quote anti-IDOR). **Smoke HTTP:** card com prêmio do CRM
 (R$ 1.512,00 = fator de região × base, −10% corretor autorizado), coberturas e `pdf_ref`. ✅
+
+### Fase 5b.2 — Audit de integração (habilita a jornada)
+
+**Descobertas (depois):**
+- **`business.integration_events`** (migração `0006`, append-only) — registra cada troca com sistema externo
+  (fake): `crm_sync`/`ads_conversion` (worker), `crm_price_quote` (quote), `notify_otp` (OTP). É o que a
+  **jornada do lead** (DEC-ORB-042, F7) vai ler ponta a ponta.
+- **Escrita pelos callers** (`record_integration_event`), logo após o fake, na **mesma transação** do
+  intent/turno — sem acoplar os adapters ao banco. Correlação por `request_id`.
+- **Segurança:** o evento `notify_otp` registra só `{channel, purpose, email}` — **NUNCA o código** (smoke:
+  `sem_codigo=t`). Payloads são montados explicitamente pelo caller (não despeja objetos crus).
+- **Sem mudança de escopo. 5b.2 concluída → FASE 5b COMPLETA** (cotação + audit). Falta a **jornada**
+  (DEC-ORB-042) na F7, que agora tem todos os dados.
+
+**Verificado (5b.2):** `ruff` + `pytest` **91** (53 unit + 38 integração — worker registra crm_sync + 2×
+ads_conversion; quote registra crm_price_quote; OTP registra notify_otp **sem o código**). **Smoke HTTP:**
+`integration_events` populado (crm_price_quote + notify_otp sem código). ✅

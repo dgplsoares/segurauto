@@ -7,7 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.adapters.crm import get_crm
+from app.business.repository.integration_events import record_integration_event
 from app.business.repository.models import QuoteRow
+from app.shared.observability import request_id_ctx
 
 _COVERAGES = ["roubo_furto", "colisao", "danos_a_terceiros", "assistencia_24h", "carro_reserva"]
 
@@ -52,4 +54,10 @@ class QuoteService:
         )
         self.session.add(row)
         await self.session.flush()
+        await record_integration_event(
+            self.session, event_type="crm_price_quote", lead_id=lead_id, session_id=session_id,
+            request={"vehicle": slots.get("vehicle"), "zipcode": slots.get("zipcode"),
+                     "broker_code": slots.get("broker_code")},
+            response=result, request_id=request_id_ctx.get(),
+        )
         return row, result

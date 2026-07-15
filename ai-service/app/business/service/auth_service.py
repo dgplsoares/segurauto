@@ -7,8 +7,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.business.repository.auth_repository import AuthRepository
+from app.business.repository.integration_events import record_integration_event
 from app.business.repository.models import OtpCodeRow
 from app.shared.config import get_settings
+from app.shared.observability import request_id_ctx
 from app.shared.security import gen_otp, new_session_token, otp_hash, otp_matches, token_pk
 
 logger = logging.getLogger("segurauto.business")
@@ -43,8 +45,14 @@ class AuthService:
         await self.repo.insert_otp(
             email=email, code_hash=otp_hash(email, code), expires_at=now + timedelta(seconds=s.otp_ttl_s)
         )
-        if await self.repo.latest_lead_by_email(email) is not None:
+        lead = await self.repo.latest_lead_by_email(email)
+        if lead is not None:
             await self.notif.send_otp(email=email, code=code)
+            await record_integration_event(
+                self.repo.session, event_type="notify_otp", lead_id=lead.id,
+                request={"channel": "email", "purpose": "otp", "email": email},  # NUNCA o código
+                response={"sent": True}, request_id=request_id_ctx.get(),
+            )
 
     async def verify_otp(self, email: str, code: str) -> str | None:
         """Retorna o token da sessão, ou None (401). Palpite errado NÃO consome o código (anti-lockout)."""
