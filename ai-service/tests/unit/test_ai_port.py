@@ -1,6 +1,6 @@
 """`AiPort` — o único ponto de contato business→ai (DEC-ORB-021). Mockável e determinístico."""
 from app.business.ai_port import AiPort, InProcessAiAdapter
-from app.business.domain.qualification import QualificationResult
+from app.shared.qualification import QualificationResult
 
 
 async def test_qualify_is_deterministic_and_typed():

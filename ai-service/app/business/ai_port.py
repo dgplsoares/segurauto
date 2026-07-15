@@ -7,7 +7,7 @@
 """
 from typing import Protocol, runtime_checkable
 
-from app.business.domain.qualification import QualificationResult
+from app.shared.qualification import QualificationResult
 
 
 @runtime_checkable

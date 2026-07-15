@@ -2,7 +2,7 @@
 import pytest
 
 from app.business.domain.lead import InvalidTransition, Lead, LeadStatus
-from app.business.domain.qualification import QualificationBand, band_for, rubric_score
+from app.shared.qualification import QualificationBand, band_for, rubric_score
 
 
 def _lead(**kw) -> Lead:

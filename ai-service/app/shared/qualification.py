@@ -1,7 +1,8 @@
-"""Qualificação do lead — saída estruturada e parte determinística (DEC-ORB-008).
+"""Qualificação do lead — saída estruturada e parte determinística (DEC-ORB-008/021).
 
-A rubrica é a base previsível do score (testável sem LLM). Na Fase 3 o agente de IA refina/explica;
-aqui ela também serve de placeholder determinístico para as Fases 1–2.
+Vive em `shared/` porque é o **contrato comum** entre `business` (que persiste o resultado) e `ai` (que o
+produz/refina): assim o `ai` não importa nada de `business` (cross-import `ai→business` = 0, DEC-ORB-021).
+A rubrica é a base previsível do score (testável sem LLM); na Fase 3 o agente refina/explica.
 """
 from dataclasses import dataclass
 from enum import Enum

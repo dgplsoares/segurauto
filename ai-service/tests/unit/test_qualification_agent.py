@@ -3,7 +3,7 @@ from app.ai.agents.config import AgentConfig
 from app.ai.agents.qualification_agent import QualificationAgent, get_qualification_agent
 from app.ai.providers.llm import StubLLM
 from app.ai.providers.orchestrator import ModelOrchestrator
-from app.business.domain.qualification import QualificationBand
+from app.shared.qualification import QualificationBand
 
 FULL = dict(has_vehicle=True, has_phone=True, has_zipcode=True, consent=True, source="meta")
 

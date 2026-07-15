@@ -12,7 +12,7 @@ from langgraph.graph import END, StateGraph
 from app.ai.agents.config import AgentConfig, get_qualification_config
 from app.ai.providers.llm import get_llm
 from app.ai.providers.orchestrator import ModelOrchestrator
-from app.business.domain.qualification import QualificationResult, rubric_score
+from app.shared.qualification import QualificationResult, rubric_score
 
 
 class QualState(TypedDict, total=False):

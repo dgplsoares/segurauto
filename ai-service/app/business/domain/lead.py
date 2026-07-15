@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
-from app.business.domain.qualification import QualificationBand, QualificationResult
+from app.shared.qualification import QualificationBand, QualificationResult
 
 
 class LeadStatus(str, Enum):

@@ -667,3 +667,14 @@ Corrigido o **claim falso**: criado `ai-service/tests/real/` com um smoke real *
 
 **Verificado:** a receita documentada roda (`pytest tests/unit tests/integration` → 125); `tests/real` pula
 sem chave; todos os links do README existem; `ruff` limpo; grep-clean. ✅
+
+## Fase 8c — `QualificationResult` → `shared/` (refino DEC-ORB-021)
+
+O único cross-import `ai→business` era o `qualification_agent` importando `QualificationResult`/`rubric_score`
+de `business.domain.qualification`. Movi o módulo (domínio puro) para **`app/shared/qualification.py`** — o
+contrato comum entre `business` (persiste) e `ai` (produz) — e reapontei os 6 importers (agente, `ai_port`,
+`lead`, 3 testes). Adicionado `tests/unit/test_architecture.py` que **falha se `app/ai/` voltar a importar
+`app.business`** (guarda a extração da V2).
+
+**Verificado:** `grep` confirma **cross-import `ai→business` = 0**; `ruff` + `pytest` **126** (67 unit + 59
+integração). ✅
