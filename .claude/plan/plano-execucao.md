@@ -97,6 +97,7 @@ Meta: personalizar a cotação e disparar ações via outbox.
 
 - [ ] Personalização/re-cotação (seleção de coberturas) — marketplace multi-seguradora = V2
 - [ ] Ações **write-through-outbox**: `crm_update` / `notify` (email/WhatsApp/SMS via `NotificationPort` fake) / `conversion` — só após **confirmação explícita**, idempotentes por `event_id=(session,tipo,turno)`
+- [ ] **Audit de integração** (habilita a jornada da DEC-ORB-042): persistir o **request/response real** de/para CRM/Ads/e-mail (estender `outbox` com `result` **ou** tabela append-only `integration_events` com `lead_id`/`session_id`/tipo/direção/payloads)
 - [ ] **Handoff humano**: detectar + flag ortogonal + mensagem honesta + intent na outbox (handler fake)
 - [ ] Atribuição por **Click_ID**: capturar gclid/fbclid na LP → persistir no lead → enviar na conversão
 - **Verificar:** ação 2× → efeito 1×; conversão com `click_id` deduplicada.
@@ -106,6 +107,11 @@ Meta: gate automatizado e stack reprodutível do zero.
 
 - [ ] `.github/workflows/ci.yml`: job **ai-service** (pytest mock + ruff), job **frontend** (build + test), job **docker build**
 - [ ] `/metrics` completo + **README de entrega** (stack, fake vs real, decisões, observabilidade, próximos passos)
+- [ ] **Endpoint de jornada do lead para avaliação** (DEC-ORB-042, **gated demo-only**): `GET
+  /eval/leads/journey?email=` (JSON agregado: cadastro + mensagens + outbox + cotações; resolve pela
+  identidade canônica) + `GET /eval/leads` (descoberta) + **seed de demo** (um comando gera a jornada) +
+  opcional `?format=html`. Fail-closed fora de `local`. Payloads reais de CRM/Ads/e-mail dependem do audit
+  de integração da F6 (senão mostra intents+status).
 - [ ] Reconciliar `diario-de-fases.md` + `mem_session_summary`
 - **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST persiste + (worker) sincroniza fakes, `/health` OK.
 

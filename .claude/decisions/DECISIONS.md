@@ -319,3 +319,21 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   na 037). `verify_otp` resolve o `canonical_lead_id` (upsert) e minta a sessão com ele. O gate segue
   **estrito em `lead_id`** (nunca e-mail), agora **estável por identidade** → continuidade + isolamento.
 - **Trade-off:** +1 tabela e um upsert no `verify_otp`, em troca de continuidade de sessão sem afrouxar o gate.
+
+### DEC-ORB-042 — Endpoint de "jornada do lead" para avaliação (agregado, **gated demo-only**)
+- **Contexto:** o avaliador precisa inspecionar o resultado do teste de forma **agregada** (cadastro +
+  conversa + CRM/Ads/e-mail + cotações) sem encadear várias chamadas nem consultar o banco na mão.
+- **Escolha:** `GET /eval/leads/journey?email=` (tag **`eval`** no Swagger) devolve um JSON estruturado com a
+  jornada do lead resolvido pela **identidade canônica** (DEC-ORB-041; *fallback*: lead mais recente por
+  e-mail): dados cadastrais, **todas as mensagens** das sessões, eventos de `outbox` (intents CRM/Ads/e-mail
+  + status) e **cotações** (F5b). **GATED**: habilitado só em `ENVIRONMENT=local` (ou flag `enable_eval_api`),
+  **fail-closed** fora disso — senão desfaz o hardening (LEAK-1/anti-IDOR/enumeração). Complementos de baixo
+  atrito: `GET /eval/leads` (lista e-mails/identidades recentes p/ **descoberta**) e um **seed de demo** (um
+  comando gera uma jornada completa). Opcional `?format=html` (timeline renderizado, zero-fricção; o JSON
+  segue disponível para LLM/máquina). **Read-only** e cross-context de leitura — vive num módulo `eval`
+  separado, sem lógica de domínio; NÃO é CRM/funil (só uma projeção de leitura para avaliação).
+- **Dependência:** para exibir os **payloads reais** de/para CRM/Ads/e-mail (não só os intents), é preciso
+  um **audit de integração** — estender o `outbox` com `result`/`response` ou uma tabela append-only
+  `integration_events` — introduzido junto das ações da **F6**. Antes disso, a jornada mostra intents+status.
+- **Trade-off:** expõe PII agregada, por isso **estritamente demo/local (fail-closed)**; em troca dá ao
+  avaliador (e a uma LLM) uma visão única e renderizável da jornada do lead.
