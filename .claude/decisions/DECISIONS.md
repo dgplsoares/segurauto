@@ -276,3 +276,46 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   uso único, TTL ~10min; **enumeração aceita + rate-limit** (IP/captcha = V2); `NotificationPort` fake (real pós-V1).
 - **Trade-off:** +tabelas e um passo de OTP antes do chat, em troca de auth real desacoplada de campo
   client-controlled. Reconcilia os furos do pentest (workspace/10). **Implementação no início da F4** (junto do chat que a consome).
+
+### DEC-ORB-038 — F5a: persistência de conversa + isolamento + lock + idempotência de turno
+- **Contexto:** o chat multi-turn precisa persistir a conversa sem vazar entre leads nem corromper sob
+  concorrência (invariantes de `isolamento-leads.md`); a reanálise adversarial da F5a achou 8 furos.
+- **Escolha:** tabelas `business.chat_sessions`/`chat_messages` (nada em `ai.*`; o `ai` só ganha
+  `AiPort.converse` + `/ai/converse` **stateless**); `lead_id` **NU sem FK** (convenção `outbox`/`auth`);
+  FK+CASCADE só **dentro** de `business`; `UNIQUE(session_id, seq)`. Lock por sessão via `SELECT FOR UPDATE`
+  que faz **lock + anti-IDOR** num round-trip; **gate de posse compartilhado** (`load_owned_session_or_404`)
+  em **toda** leitura (fecha E1: `chat_messages` não tem `lead_id`); alocador de `seq` **auto-curável**
+  (`COALESCE(MAX(seq),0)+1` sob o lock — E4); **idempotência de turno** por `client_turn_id`
+  `UNIQUE(session_id, client_turn_id)` + replay (E2); `session_id` do path como `str` → **404 neutro** em
+  todos os verbos/motivos, nunca 403 (E1-LOW).
+- **Trade-off:** +2 tabelas e um token de turno no client, em troca de isolamento e não-duplicação verificados.
+
+### DEC-ORB-039 — F5a: agente multi-turn stateless + slots determinísticos + guardrails
+- **Contexto:** input do usuário = dado não-confiável; o pentest mostrou `guard_in` no-op (transcrito
+  reinjeta a msg crua) e **slot poisoning** (whitelist só de chave deixa valor virar arg de tool na F5b).
+- **Escolha:** `ConverseAgent` LangGraph **stateless** (`RagService` no state; sem checkpointer; nós
+  disjuntos das state keys), esqueleto do 4b. **Extração de slots determinística** (regex/regras) + **schema
+  de VALOR** por slot antes de persistir/alimentar; `broker_code` **resolvido/autorizado server-side**
+  (nunca cru). Transcrito tratado como não-confiável: **sanitizar/delimitar cada linha** na montagem e passar
+  `safe_message` como turno corrente (E5). `strip_injection` = **best-effort, nunca fronteira** (E7). Masking
+  estendido (CEP/telefone/placa case-insensitive + neutralizar CRLF) + `max_length` na mensagem + **janela de
+  transcrito** (E8). **Escopo:** F5a só sinaliza `ready_to_quote`; cotação = F5b (reconcilia DEC-ORB-027).
+- **Trade-off:** extração determinística é menos "esperta" com texto bagunçado (pergunta de novo), em troca
+  de superfície de injeção fechada e CI-determinística.
+
+### DEC-ORB-040 — F5a: boundary transacional do turno (commit único + timeouts + pool isolado)
+- **Contexto:** segurar o `FOR UPDATE` + a conexão do pool durante a chamada do LLM (~46s no pior caso)
+  podia **inanir a captura** (`/leads`) — exatamente o acoplamento que a DEC-ORB-025 separou.
+- **Escolha:** manter **commit único** no boundary (DEC-ORB-012), mas impor `lock_timeout` +
+  `statement_timeout` + cap de transcrito e dar ao chat um **pool de conexões dedicado/limitado**, separado
+  de auth/captura. Turno lento falha rápido (429/409) e nunca prende `/leads`. (Alternativa "dois-commits"
+  considerada e preterida por complexidade/atomicidade.)
+- **Trade-off:** um pool a mais e turnos lentos que falham rápido, em troca de liveness da captura.
+
+### DEC-ORB-041 — `canonical_lead_id` / tabela `identities` antecipada para F5a (refina DEC-ORB-037)
+- **Contexto:** o gate anti-IDOR chaveia `lead_id`, mas o token resolvia "lead mais recente por e-mail" (sem
+  `UNIQUE(email)`) → sessão órfã na re-auth e a tentação de relaxar o gate para e-mail (reabriria cross-lead).
+- **Escolha:** antecipar a tabela `business.identities(email_normalized UNIQUE, canonical_lead_id)` (era V2
+  na 037). `verify_otp` resolve o `canonical_lead_id` (upsert) e minta a sessão com ele. O gate segue
+  **estrito em `lead_id`** (nunca e-mail), agora **estável por identidade** → continuidade + isolamento.
+- **Trade-off:** +1 tabela e um upsert no `verify_otp`, em troca de continuidade de sessão sem afrouxar o gate.
