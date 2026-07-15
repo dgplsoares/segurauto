@@ -29,6 +29,9 @@ SELECT * FROM business.outbox
 `claim → processa → (se QUALIFY: enfileira crm_sync/ads_meta/ads_google na MESMA tx) → marca done → commit`.
 - `qualify` → `AiPort.qualify` → aplica score/faixa/status no lead → **encadeia** as intents downstream.
 - `crm_sync` → `CrmPort.upsert_lead` (idempotente). `ads_*` → `AdsPort.send_conversion(event_id)` (dedup).
+- **Contrato do CRM:** o `crm_sync` envia `source` (texto livre = `landing_page` na V1) e o campo `status`
+  do CRM com um **valor fixo do contrato** (p.ex. `qualified` — o lead chega ao CRM já qualificado por nós).
+  O **funil de vendas é do CRM** (não gerenciamos); nosso `status` é só o **ciclo de processamento** interno.
 
 ## Plumbing de atribuição (UTM / Click_ID)
 - Migration aditiva: colunas `utm_source`/`utm_medium`/`utm_campaign`/`click_id` em `business.leads`
