@@ -22,7 +22,7 @@ class AiPort(Protocol):
         source: str | None,
     ) -> QualificationResult: ...
 
-    async def support(self, *, query: str) -> str: ...
+    async def support(self, *, query: str, session) -> dict: ...
 
 
 class InProcessAiAdapter:
@@ -48,5 +48,14 @@ class InProcessAiAdapter:
             source=source,
         )
 
-    async def support(self, *, query: str) -> str:
-        return f"[suporte] recebido: {' '.join(query.split())[:120]}"
+    async def support(self, *, query: str, session) -> dict:
+        # O suporte LÊ o RAG → recebe a sessão (detalhe in-process; na V2 o client HTTP a ignora).
+        from app.ai.agents.config import get_support_config
+        from app.ai.agents.support_agent import get_support_agent
+        from app.ai.providers.embeddings import get_embedder
+        from app.ai.rag.rag_service import RagService
+        from app.ai.rag.vector_store import VectorStore
+
+        cfg = get_support_config()
+        rag = RagService(VectorStore(session), get_embedder(), k=cfg.rag_k, min_score=cfg.rag_min_score)
+        return await get_support_agent().answer(query, rag=rag)

@@ -14,8 +14,4 @@ async def test_qualify_is_deterministic_and_typed():
 def test_inprocess_adapter_satisfies_port():
     # runtime_checkable Protocol: o adapter cumpre o contrato do AiPort.
     assert isinstance(InProcessAiAdapter(), AiPort)
-
-
-async def test_support_echoes_query():
-    out = await InProcessAiAdapter().support(query="O seguro cobre roubo?")
-    assert "suporte" in out.lower()
+    # `support` agora lê o RAG (precisa de sessão) → testado em integração (test_support_flow.py).

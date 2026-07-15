@@ -273,3 +273,35 @@ Plano-mestre em `fase-4/`. Reanálise dedicada por subfase (contexto fresco → 
 - **Sem mudança de escopo. 4a concluída.** Próximo: **4b** (support_agent single-turn + `/support/chat` autenticado).
 
 **Verificado (4a):** `ruff` limpo + `pytest` **52/52** (security + auth flow); docker (auto-migrate 0003, 202/401, OTP não vaza código). ✅
+
+### Fase 4b — support_agent (single-turn) + `/support/chat` autenticado
+
+**Reanálise (antes):**
+- **Decisão de wiring (evita o bug do engine global):** o RAG do suporte é um **read**; passar a
+  `RagService` (construída com a **sessão do request**, via `Depends(get_session)`) **dentro do state do
+  grafo** — em vez de o nó abrir o engine global (que quebraria em testes multi-loop, como na F2). Assim o
+  caminho do request usa a sessão injetada (nos testes, `dependency_overrides`).
+- **`AiPort.support(*, query, session) -> dict`** (era `-> str`): o suporte LÊ o RAG, então recebe a sessão
+  (detalhe do adapter in-process; na V2 o client HTTP ignora a sessão e o serviço de IA usa a sua). Move o
+  teste de support do unit para integração.
+- **Grafo:** `guard_in` (scope-and-strip de injeção + detecta handoff) → `retrieve` (RAG do state) →
+  **[cond suficiente]** → `generate` (LLM grounded, system prompt trata input/docs como dados) | `refuse`
+  (rejection + handoff). `rag_mode=rag_preferred` — recusa em vez de alucinar.
+- **`/support/chat`** (business) **autenticado por `require_session`** (anti-IDOR) → `AiPort.support`.
+  **Single-turn = stateless** (histórico persistente só na F5). RAG genérico compartilhado.
+- **Testes:** `_strip_injection`/`_detect_handoff` (unit); in-domain→suficiente+resposta,
+  out-domain→refuse+handoff, injeção neutralizada, `/support/chat` **401 sem token / 200 com token** (integração).
+- **Riscos:** nome de nó vs chave de estado (já sabemos); `StubLLM` não é grounded de verdade → testar o
+  **fluxo**, não o conteúdo (grounding = teste real opt-in).
+
+**Descobertas (depois):**
+- **support_agent (LangGraph) funcionando:** `guard_in → retrieve → [cond] → generate|refuse`. A `RagService`
+  passada **no state** (com a sessão do request) evitou o engine global — **sem** o bug multi-loop da F2.
+- **`rag_mode=rag_preferred` verificado:** in-domain → `sufficient:true` + resposta; out-domain → **recusa**
+  + `handoff_suggested:true` (não alucina). Intent comercial (`corretor`) → handoff.
+- **`/support/chat` autenticado:** **401 sem token** (anti-IDOR) confirmado no stack real; 200 com sessão.
+- **`AiPort.support(query, session) → dict`** (era `str`); teste de support movido p/ integração.
+- **Guardrail** `strip_injection` (scope-and-strip) + `detect_handoff`; single-turn **stateless** (histórico só F5).
+- **Sem mudança de escopo. 4b concluída.** Próximo: **4c** (LP conectada — Next.js + modal OTP + BFF).
+
+**Verificado (4b):** `ruff` limpo + `pytest` **58/58**; docker (`/support/chat` 401 sem token, `/ai/support` in/out-domain). ✅
