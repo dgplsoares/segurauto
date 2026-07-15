@@ -6,6 +6,18 @@
 **Fatia vertical primeiro:** LP → captura → persist+outbox → worker (qualifica/CRM/Ads). Suporte e
 polish depois. Time-box total ~4,5–5h.
 
+**Layout extraível (DEC-ORB-021):** o `ai-service/app/` é dividido em dois bounded contexts —
+`business/` (leads, outbox, adapters CRM/Ads, lifecycle) e `ai/` (agentes, RAG, orquestrador,
+embeddings) — mais `shared/` (config, database, observabilidade). O `business` chama o `ai` **só via
+`AiPort`** (in-process agora; HTTP na V2). Schemas de banco separados: `business.*` e `ai.*`, sem FK cruzada.
+
+```
+ai-service/app/
+├── shared/     config · database · observability (correlação, auth-seam)
+├── business/   domain · api (/leads) · service · repository (+ outbox, schema business.*) · worker · adapters (crm/ads) · ai_port.py
+└── ai/         api (/ai/qualify, /ai/support) · agents (LangGraph) · rag (embeddings/rerank/vector_store, schema ai.*) · providers (orchestrator/llm)
+```
+
 ---
 
 ## Fase 0 — Scaffold + protocolo + infra base  ·  ~0.6h
@@ -14,20 +26,22 @@ Meta: repo navegável, processo versionado, infra de pé e observabilidade base.
 - [ ] `.claude/` completo (protocolo, DECISIONS, análise, plano, diário, arquitetura visual da LP, roadmap V2)
 - [ ] Árvore do monorepo (`frontend/`, `ai-service/`) + `docker-compose.yml` (postgres+pgvector, ai-service, frontend) + `.env.example`
 - [ ] Compose resiliente: **volume nomeado + healthcheck + `depends_on: service_healthy` + `restart: unless-stopped`**
-- [ ] `ai-service`: FastAPI mínimo com `/health` + `/health/ready`; `core/config` (pydantic settings) escolhendo fake/real
+- [ ] `ai-service`: FastAPI mínimo com `/health` + `/health/ready`; `shared/config` (pydantic settings) escolhendo fake/real; esqueleto dos contextos `shared/`, `business/`, `ai/`
 - [ ] Observabilidade base: `configure_logging()` + middleware de `request_id` (contextvars)
 - [ ] Engram: `mem_session_start` + save das decisões-semente
 - **Verificar:** `docker compose up` sobe Postgres+pgvector e `/health` responde 200. Sem lógica ainda.
 
-## Fase 1 — Domínio + ports/adapters + persistência + outbox  ·  ~0.8h
-Meta: modelar o lead, os seams de integração e a persistência resiliente; domínio testável sem infra.
+## Fase 1 — Contextos + ports/adapters + persistência + outbox  ·  ~0.8h
+Meta: modelar o lead e os seams (incl. o `AiPort` entre `business` e `ai`); persistência resiliente; domínio testável sem infra.
 
-- [ ] `domain/` puro: `Lead` (com `status`: received→qualifying→qualified→synced/failed), `QualificationResult`
-- [ ] `ports.py`: `CrmPort`, `AdsPort`, `LLMPort`, `RerankPort` (+ adapters **fake**: `FakeCrm` com tabela de preços, `FakeMetaAds`/`FakeGoogleAds`, `StubLLM`, `HeuristicRerank`)
-- [ ] `LeadRepository` (Postgres) + `outbox` (com `status` pending/done/dead, `retry_count`, **correlação `request_id`/`lead_id`**) + coluna **`idempotency_key` UNIQUE**
-- [ ] **alembic**: migration inicial (extension pgvector + tabela `leads` + `outbox` + `embeddings`)
-- [ ] `core/config` liga fake/real por env
-- **Verificar:** unit do domínio SEM infra (regras de Lead/score) + teste de contrato dos adapters fake. Verde em CI sem rede.
+- [ ] Estrutura em contextos: `shared/`, `business/`, `ai/` (ver layout acima)
+- [ ] `business/domain/` puro: `Lead` (com `status`: received→qualifying→qualified→synced/failed), `QualificationResult`
+- [ ] Portas: `business/adapters` → `CrmPort`, `AdsPort` (fakes: `FakeCrm` com tabela de preços, `FakeMetaAds`/`FakeGoogleAds`); `ai/providers` → `LLMPort`, `RerankPort` (fakes: `StubLLM`, `HeuristicRerank`)
+- [ ] **`business/ai_port.py`** — `AiPort` (`qualify`, `support`); adapter **in-process** (na V1 chama `ai/`; na V2 vira HTTP client). Contrato definido já.
+- [ ] `LeadRepository` + `outbox` (`status` pending/done/dead, `retry_count`, **correlação `request_id`/`lead_id`**) + coluna **`idempotency_key` UNIQUE**
+- [ ] **alembic**: migration inicial com **schemas separados** — `business.*` (extensão n/a) para `leads`/`outbox`; `ai.*` para `embeddings`/`documents` + extensão **pgvector**. **Sem FK cruzada.**
+- [ ] `shared/config` (pydantic settings) liga fake/real por env
+- **Verificar:** unit do domínio SEM infra (regras de Lead/score) + teste de contrato dos adapters fake + `AiPort` mockável. Verde em CI sem rede.
 
 ## Fase 2 — API de captura (fatia vertical, sem IA ainda)  ·  ~0.7h
 Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de plugar o worker/IA.
@@ -40,11 +54,12 @@ Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de
 ## Fase 3 — Worker + agente de qualificação + RAG  ·  ~0.9h
 Meta: worker consome a outbox e substitui o placeholder por qualificação real (RAG + LangGraph); efeitos idempotentes.
 
-- [ ] **Worker** (loop async) consome a outbox at-least-once, com **retry/backoff** e **dead-letter**; re-hidrata `request_id`/`lead_id`
-- [ ] `RagService` (embedding → pgvector search → `RerankPort` → context → generate) + **seed** da knowledge_base
-- [ ] `qualification_agent` (LangGraph) → `QualificationResult` estruturado (score + faixa + motivo)
-- [ ] `ModelOrchestrator` + `LLMPort` (StubLLM determinístico p/ teste; OpenAI opt-in)
-- [ ] Handlers idempotentes: `CrmPort.upsert` + `AdsPort.send_conversion` (event_id estável) + re-check terminal
+- [ ] `ai/api`: **contrato HTTP público** `POST /ai/qualify` e `POST /ai/support` (stateless); o `AiPort` in-process chama esses handlers (na V2, o mesmo contrato vira chamada HTTP)
+- [ ] **Worker** (em `business/`, loop async) consome a outbox at-least-once, com **retry/backoff** e **dead-letter**; re-hidrata `request_id`/`lead_id`; chama a IA **via `AiPort`**
+- [ ] `ai/rag` `RagService` (embedding → pgvector search → `RerankPort` → context → generate) + **seed** da knowledge_base
+- [ ] `ai/agents` `qualification_agent` (LangGraph) → `QualificationResult` estruturado (score + faixa + motivo)
+- [ ] `ai/providers` `ModelOrchestrator` + `LLMPort` (StubLLM determinístico p/ teste; OpenAI opt-in)
+- [ ] Handlers idempotentes (no `business`): `CrmPort.upsert` + `AdsPort.send_conversion` (event_id estável) + re-check terminal
 - [ ] Observabilidade IA: `log_agent_turn` (tokens) + eventos `rag_*` + métricas de LLM/outbox
 - **Verificar:** integração com LLM stub — qualificação determinística e estruturada; RAG recupera do seed; **rodar o worker 2x → efeitos 1x**; teste de concorrência (`asyncio.gather` de POSTs com a mesma chave → 1 lead). `real/` opt-in valida OpenAI.
 

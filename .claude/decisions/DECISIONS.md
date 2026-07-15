@@ -19,6 +19,8 @@
 - **Escolha:** o **ai-service** concentra domínio/persistência/qualificação/sync; o Next.js expõe
   route handlers (`/api/lead`, `/api/support`) como **BFF/proxy fino**.
 - **Trade-off:** um hop de rede a mais; ganha CORS resolvido, segredo escondido e validação server-side.
+- **Refino (DEC-ORB-021):** o processo hospeda o lifecycle, mas internamente o módulo `business` é a
+  unidade dona/**extraível** e a IA fica atrás de uma porta (`AiPort`).
 
 ### DEC-ORB-003 — PostgreSQL + pgvector como banco único
 - **Contexto:** há dados relacionais (leads) e vetoriais (embeddings do RAG).
@@ -131,3 +133,29 @@
 - **Trade-off:** sem UI de gestão agora; a V1 mantém os **seams** (`config`, content provider,
   `IngestionService`, `lead.status`, namespace `/admin`) para a V2 ser **aditiva**, não retrabalho.
   Ver `.claude/plan/roadmap-v2.md`.
+
+---
+
+## Evolução de topologia
+
+### DEC-ORB-021 — Monólito modular extraível (preparado para separar backend de negócio na V2)
+- **Contexto:** a V1 entrega **um** serviço Python (FastAPI). Numa evolução, a lógica de negócio
+  (leads, eventos de conversão, conteúdo da LP, usuários/permissões) pode virar um **backend dedicado
+  separado**, mantendo o Python/FastAPI como **infraestrutura de IA**. Sem preparo, essa separação vira
+  rewrite tenso, split de banco doloroso e correlação perdida no novo hop.
+- **Escolha:** desde a V1, tratar o serviço como **monólito modular extraível**, com dois bounded
+  contexts e um boundary duro:
+  - `business/` (leads, `status`/lifecycle, outbox, eventos de conversão, adapters CRM/Ads) — a **unidade
+    de negócio** (futuro backend dedicado).
+  - `ai/` (agentes LangGraph, RAG, orquestrador de modelos, embeddings, rerank) — a **infra de IA** (permanece FastAPI).
+  - O `business` chama o `ai` **apenas por uma porta `AiPort`** (`qualify(lead)`, `support(query,ctx)`):
+    adapter **in-process na V1** → **client HTTP na V2**, mesmo contrato.
+  - **Contrato HTTP da IA** definido já (`POST /ai/qualify`, `POST /ai/support`), **stateless** (a IA
+    recebe os dados que precisa e devolve o resultado; **não** acessa tabelas de negócio).
+  - **Ownership de dados por schema**: `business.*` vs `ai.*`, **sem foreign key cruzada** (referência
+    por ID opaco) → split de banco trivial depois.
+  - **Correlação e auth transport-agnostic**: `X-Request-Id`/`traceparent` + seam de token/JWT interno,
+    propagados por contextvars na V1 e por **header** na V2 (a observabilidade sobrevive ao novo hop).
+- **Trade-off:** disciplina extra na V1 (uma porta, um contrato, dois schemas, correlação por header) —
+  **zero** container novo agora; em troca, a separação futura é **aditiva e sem quebrar a aplicação**.
+  Ver `.claude/plan/plano-execucao.md` (layout) e `.claude/plan/roadmap-v2.md`.

@@ -21,8 +21,11 @@ para plataformas de anúncios (fakes). Time-box de entrega curto: **correção e
 ## Estrutura
 
 ```
-frontend/     Landing Page (Next.js) + BFF
-ai-service/   FastAPI: domínio do lead, agentes, RAG, ports & adapters (CRM/Ads/LLM/Rerank)
+frontend/     Landing Page (Next.js) + BFF (route handlers)
+ai-service/   FastAPI — monólito modular extraível (DEC-ORB-021):
+  app/shared/     config · database · observabilidade (correlação, auth-seam)
+  app/business/   leads · api (/leads) · service · repository (+ outbox) · worker · adapters (CRM/Ads) · ai_port.py
+  app/ai/         api (/ai/qualify, /ai/support) · agents (LangGraph) · rag · providers (orchestrator/LLM/rerank)
 .claude/      protocolo, decisões (DECISIONS.md), análise e planos
 docker-compose.yml   postgres+pgvector + ai-service + frontend
 ```
@@ -40,6 +43,9 @@ docker-compose.yml   postgres+pgvector + ai-service + frontend
    fronteira assíncrona (ids gravados na outbox); `/health`, `/health/ready`, `/metrics`. **PII mascarada**.
 5. **Guiado por testes** — unit (domínio sem infra) + integração (fakes + LLM stub, gate de CI);
    testes reais opt-in por `.env`.
+6. **Preparado para extração (V2)** — `ai-service` é um **monólito modular extraível**: contextos
+   `business/` (negócio) e `ai/` (IA) com **`AiPort`** entre eles (in-process → HTTP), contrato `/ai/*`
+   stateless e schemas `business.*`/`ai.*` **sem FK cruzada**. Ver DEC-ORB-021 e `.claude/plan/roadmap-v2.md`.
 
 ## Como rodar
 

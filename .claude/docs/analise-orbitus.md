@@ -68,3 +68,5 @@ Worker (async) consome outbox:
 - Resiliência: volume+healthcheck+depends_on, alembic, timeout/retry/backoff, dead-letter.
 - Segurança: validação de payload, rate-limit, e guardrail de prompt-injection no agente de suporte
   (superfície a aprofundar).
+- Evolutibilidade: **monólito modular extraível** (contextos `business`/`ai` + `AiPort` + schemas
+  separados) para separar o backend de negócio na V2 sem quebrar a arquitetura (DEC-ORB-021).
