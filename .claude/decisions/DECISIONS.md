@@ -337,3 +337,23 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   `integration_events` — introduzido junto das ações da **F6**. Antes disso, a jornada mostra intents+status.
 - **Trade-off:** expõe PII agregada, por isso **estritamente demo/local (fail-closed)**; em troca dá ao
   avaliador (e a uma LLM) uma visão única e renderizável da jornada do lead.
+
+### DEC-ORB-043 — F5b: cotação (`quote_tool`/`pdf_tool`) orquestrada pelo business, número do CRM
+- **Contexto:** a conversa multi-turn completa os slots (`ready_to_quote` da F5a); falta gerar a cotação.
+- **Escolha:** `quote_tool` **orquestrado pelo business** (não pelo LLM), disparado **automaticamente** quando
+  os slots completam. O prêmio vem de `CrmPort.price_quote` (fake determinístico) — **número/decisão fora do
+  LLM** (reconcilia DEC-ORB-027, como a extração de slots da F5a.2). `broker_code` é **autorizado server-side
+  no CRM fake** (fecha o E6). Cotação persistida em `business.quotes` (prêmio em **centavos**), **escopada à
+  sessão** (gate de posse anti-IDOR), **uma por sessão** (re-cota = F6). PDF = **marcador** (`pdf_ref`), sem
+  bytes nem endpoint de download. GET `/support/sessions/{id}/quote` autenticado.
+- **Trade-off:** cotação automática + PDF só marcador (mais simples/demonstrável no card), deixando a
+  confirmação explícita e a geração real de PDF para evoluções.
+
+### DEC-ORB-044 — F5b: `integration_events` (audit que habilita a jornada)
+- **Contexto:** o `outbox` guarda intent+status, mas não os **payloads reais** de/para CRM/Ads/e-mail; a
+  jornada (DEC-ORB-042) precisa deles.
+- **Escolha:** tabela **append-only** `business.integration_events` (`lead_id`/`session_id`/tipo/`request`/
+  `response`/`status`/`request_id`/`created_at`). Escrita pelos **callers** (worker: `crm_sync`/`ads_*`;
+  `quote_tool`: `crm_price_quote`; OTP: `notify_otp`) logo após o fake — sem acoplar os adapters ao banco.
+  Cobre também `price_quote`/OTP (fora do outbox). PII mascarada; o **OTP nunca registra o código**.
+- **Trade-off:** +1 tabela e uma escrita por troca, em troca de uma jornada completa e auditável.
