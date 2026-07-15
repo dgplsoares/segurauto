@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     environment: str = "local"
     log_level: str = "INFO"
 
+    # API de avaliação/jornada (DEC-ORB-042). Read-only, expõe a jornada agregada do lead. FAIL-CLOSED:
+    # só é montada em environment=local OU com este flag explicitamente ligado (nunca por acidente em prod).
+    enable_eval_api: bool = False
+
     # Banco (Postgres + pgvector). Schemas separados business.* / ai.* (DEC-ORB-021).
     database_url: str = "postgresql+asyncpg://segurauto:segurauto@db:5432/segurauto"
 

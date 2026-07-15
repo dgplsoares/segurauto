@@ -55,6 +55,15 @@ def create_app() -> FastAPI:
     app.include_router(ai_qualify_router, prefix="/ai")
     app.include_router(ai_support_router, prefix="/ai")
     app.include_router(ai_converse_router, prefix="/ai")
+
+    # Contexto eval — jornada agregada do lead (DEC-ORB-042). FAIL-CLOSED: só é montado em local ou com
+    # enable_eval_api. Fora disso a superfície nem existe (o gate de rota re-checa como defesa extra).
+    if s.enable_eval_api or s.environment == "local":
+        from app.eval.api.journey import router as eval_router
+
+        app.include_router(eval_router, prefix="/eval")
+        logger.info("eval API montada (jornada do lead) — env=%s", s.environment)
+
     return app
 
 

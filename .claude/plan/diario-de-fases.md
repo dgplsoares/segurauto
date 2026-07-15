@@ -547,3 +547,28 @@ total; 3 refutados) — nenhum crítico, o grosso em robustez do chat-panel. Cor
 
 **Verificado (revisão 5c):** `ruff` + `pytest` **96** (56 unit + 40 integração) + `next build` + smoke
 multi-turn (placa → CEP → "não" → **card**; follow-up "é mensal ou anual?" **não recusa**). ✅
+
+---
+
+## Jornada do lead (DEC-ORB-042) — endpoint agregado para avaliação
+
+**Objetivo:** dar ao avaliador (e a uma LLM) uma visão **única** da jornada do lead — cadastro + conversa +
+cotação + CRM/Ads/e-mail — sem encadear chamadas nem consultar o banco na mão. Os dados já estavam
+persistidos (F5b/`integration_events`, DEC-ORB-044); faltava a **projeção de leitura**.
+
+**Implementação (módulo `app/eval/`, read-only, sem lógica de domínio — NÃO é CRM/funil):**
+- `journey_service.py` — resolve o e-mail (case-insensitive) → conjunto de `lead_id`s (**todas as linhas do
+  e-mail ∪ a âncora canônica** da identidade, DEC-ORB-041) e agrega leads, sessões+mensagens, cotações,
+  outbox e `integration_events`. Sem identidade verificada → *fallback* no lead mais recente.
+- `api/journey.py` — `GET /eval/leads/journey?email=&format=json|html` + `GET /eval/leads` (descoberta).
+- `render.py` — `?format=html`: **timeline cronológica** (lead → outbox → eventos → mensagens → cotação),
+  CSS inline, **tudo escapado com `html.escape`** (o conteúdo do chat é input livre → anti-XSS na página).
+- **Gate fail-closed** (`enable_eval_api` OU `environment==local`): no `main` (nem monta a rota) **e** na
+  própria rota (`require_eval_enabled` → 404) como defesa em profundidade.
+- `seed.py` — `python -m app.eval.seed`: dirige o **fluxo real** (captura → worker qualifica/CRM/Ads → OTP →
+  identidade canônica + sessão → conversa de cotação) e imprime as URLs. Um comando = jornada completa.
+
+**Verificado:** `ruff` + `pytest` **103** (56 unit + **47** integração; +7 da jornada: agregação, canônica,
+404, descoberta, escaping HTML, gate-off). **Smoke real** (seed + container): a jornada devolve 1 lead, 8
+mensagens, cotação **R$ 1.200,00**, outbox toda `done` e eventos `crm_sync → ads_conversion×2 → notify_otp →
+crm_price_quote`; HTML 200 `text/html` com a timeline e **zero `<script>` de conteúdo**. ✅

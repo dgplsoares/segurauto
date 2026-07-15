@@ -337,6 +337,13 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   `integration_events` — introduzido junto das ações da **F6**. Antes disso, a jornada mostra intents+status.
 - **Trade-off:** expõe PII agregada, por isso **estritamente demo/local (fail-closed)**; em troca dá ao
   avaliador (e a uma LLM) uma visão única e renderizável da jornada do lead.
+- **Implementado:** módulo `app/eval/` (read-only, sem lógica de domínio). `GET /eval/leads/journey?email=`
+  **agrega por e-mail** (todas as linhas de lead do e-mail ∪ a âncora canônica) → leads, sessões+mensagens,
+  cotações, outbox e `integration_events` (DEC-ORB-044, já com os payloads reais). `GET /eval/leads`
+  (descoberta). `?format=html` = timeline cronológica com **escaping anti-XSS** (o conteúdo de chat é input
+  livre). Gate `enable_eval_api|environment==local` **no `main` (montagem) + na rota (defesa em
+  profundidade)**. Seed `python -m app.eval.seed` dirige o fluxo REAL (captura→worker→OTP→cotação) e gera
+  uma jornada completa. 7 testes de integração (agregação, canônica, 404, descoberta, escaping, gate off).
 
 ### DEC-ORB-043 — F5b: cotação (`quote_tool`/`pdf_tool`) orquestrada pelo business, número do CRM
 - **Contexto:** a conversa multi-turn completa os slots (`ready_to_quote` da F5a); falta gerar a cotação.
