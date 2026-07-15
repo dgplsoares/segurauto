@@ -60,4 +60,33 @@
 
 ## Fase 2 — API de captura (fatia vertical, sem IA)
 
-**Reanálise (antes):** _(a preencher ao iniciar a Fase 2)_
+**Reanálise (antes):**
+- `POST /leads`: schema validado — **consent obrigatório (LGPD)**, e-mail válido; `Idempotency-Key`
+  via header (fallback body/uuid).
+- `LeadService.capture`: dedup por chave; persiste `Lead` + enfileira **QUALIFY** na outbox (com
+  correlação `request_id`); **não** chama CRM/Ads (isso é o worker da Fase 3).
+- **Commit-boundary no endpoint**; sob corrida, `IntegrityError` (UNIQUE) → tratado como dedup →
+  garante **1 lead** mesmo com POSTs concorrentes.
+- Observabilidade: `lead_received`/`lead_deduped` (PII mascarada) + métrica `leads_captured_total{result}` + `/metrics`.
+- **Auto-migrate no startup** (entrypoint `alembic upgrade head`) → o container fica self-sufficient.
+- Testes de integração: double POST (sequencial + concorrente) → 1 lead; outbox com 1 intent `qualify`; consent ausente → 422.
+- Riscos: `EmailStr` precisa `email-validator`; entrypoint precisa das migrations no image; race handling.
+
+**Descobertas (depois):**
+- **Bug pego na verificação (e corrigido):** o engine global do app (cache de módulo em
+  `shared/database.py`) fica preso ao event loop do 1º teste; o pytest-asyncio cria um loop novo por
+  teste → `RuntimeError: Event loop is closed`. **Fix:** os testes de integração dirigem o app via
+  `dependency_overrides[get_session]` com o engine do teste (ligado ao loop corrente).
+- **Auto-migrate no entrypoint validado** no stack real (`[entrypoint] alembic upgrade head` → uvicorn).
+- **Idempotência ponta a ponta:** `POST` → 201; replay com a mesma chave → **200 e mesmo id**;
+  concorrente (`asyncio.gather`) → **1 lead** (UNIQUE + `IntegrityError`→dedup).
+- **outbox** com 1 intent `qualify|pending` por lead (CRM/Ads são encadeados pelo worker na Fase 3).
+- **Nit multipart** persiste, mas é inócuo — a API é JSON (não usamos forms); deixado como está.
+- **Sem mudança de escopo.** Próxima: Fase 3 (worker consome a outbox → qualification_agent+RAG →
+  encadeia CRM/Ads idempotentes; at-least-once + dead-letter).
+
+---
+
+## Fase 3 — Worker + agente de qualificação + RAG
+
+**Reanálise (antes):** _(a preencher ao iniciar a Fase 3)_

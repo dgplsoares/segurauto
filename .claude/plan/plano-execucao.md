@@ -46,10 +46,11 @@ Meta: modelar o lead e os seams (incl. o `AiPort` entre `business` e `ai`); pers
 ## Fase 2 — API de captura (fatia vertical, sem IA ainda)  ·  ~0.7h
 Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de plugar o worker/IA.
 
-- [ ] `POST /leads`: valida → **dedup por `Idempotency-Key`** → persiste lead + grava intents na **outbox** (mesma tx, commit no endpoint) → responde 201
-- [ ] `LeadService.capture` (sem qualificação ainda; score placeholder)
-- [ ] Eventos de ciclo de vida (`lead_received`, `lead_deduped`) + métrica `leads_captured_total`
-- **Verificar:** integração com fakes — **duplo POST com a mesma chave → 1 lead**; outbox com N intents; resposta tipada.
+- [x] `POST /leads`: valida (consent LGPD, e-mail) → **dedup por `Idempotency-Key`** → persiste lead + grava intent `QUALIFY` na **outbox** (mesma tx, commit no endpoint) → 201; sob corrida, `IntegrityError`→dedup
+- [x] `LeadService.capture` (sem qualificação ainda; enfileira QUALIFY p/ o worker)
+- [x] Eventos de ciclo de vida (`lead_received`/`lead_deduped`, PII mascarada) + métrica `leads_captured_total{result}` + `/metrics`
+- [x] Auto-migrate no startup (entrypoint `alembic upgrade head`) — container self-sufficient
+- **Verificado:** `ruff` + `pytest` **24/24** (unit + integração). Docker stack: entrypoint migrou, `POST` 201→**200** (mesmo id, dedup), concorrente → **1 lead**, consent 422, `/metrics` com `leads_captured_total`, outbox `qualify\|pending\|1`. ✅
 
 ## Fase 3 — Worker + agente de qualificação + RAG  ·  ~0.9h
 Meta: worker consome a outbox e substitui o placeholder por qualificação real (RAG + LangGraph); efeitos idempotentes.

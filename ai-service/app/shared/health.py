@@ -6,6 +6,7 @@
 from fastapi import APIRouter, Response, status
 
 from app.shared.database import ping
+from app.shared.metrics import render_metrics
 
 router = APIRouter(tags=["ops"])
 
@@ -22,3 +23,8 @@ async def ready(response: Response) -> dict:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "unavailable", "db": False}
     return {"status": "ready", "db": True}
+
+
+@router.get("/metrics")
+async def metrics() -> Response:
+    return render_metrics()

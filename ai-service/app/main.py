@@ -33,12 +33,16 @@ def create_app() -> FastAPI:
     app = FastAPI(title=s.app_name, version="0.0.0", lifespan=lifespan)
     app.add_middleware(RequestIdMiddleware)
 
-    # Ops
+    # Ops (health/ready/metrics)
     app.include_router(health_router)
 
-    # Contextos (montados nas próximas fases):
-    # from app.business.api.leads import router as leads_router; app.include_router(leads_router)
-    # from app.ai.api.endpoints import router as ai_router;     app.include_router(ai_router, prefix="/ai")
+    # Contexto business
+    from app.business.api.leads import router as leads_router
+
+    app.include_router(leads_router)
+
+    # Contexto ai (montado na Fase 3):
+    # from app.ai.api.endpoints import router as ai_router; app.include_router(ai_router, prefix="/ai")
     return app
 
 
