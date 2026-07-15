@@ -39,19 +39,32 @@ segurauto/
 Detalhes e histórico de decisões em [`.claude/`](.claude): protocolo, decisões (`DECISIONS.md`),
 análise e plano de execução.
 
-## Como rodar
+## Pré-requisitos
+
+Você só precisa do que o caminho escolhido exige:
+- **Rodar tudo (recomendado):** **Docker** + **Docker Compose v2**. Nada mais.
+- **Rodar serviços/testes localmente:** **Python 3.11** (ai-service) e **Node 20** (frontend).
+
+## Como rodar (clone do zero)
 
 ```bash
-cp .env.example .env      # ajuste flags: USE_FAKE_CRM, USE_FAKE_ADS, LLM_PROVIDER
+git clone https://github.com/dgplsoares/segurauto.git && cd segurauto
+cp .env.example .env      # opcional — o compose tem defaults; o modo fake roda sem editar nada
 docker compose up --build
 ```
 
 - Frontend (LP): http://localhost:3000
 - ai-service (API + docs): http://localhost:8000/docs · saúde: `/health`, `/health/ready` · métricas: `/metrics`
 
+**No primeiro boot** o ai-service roda as migrations (`alembic upgrade head`) antes de servir; o `worker`
+**reinicia até isso terminar** (por design) — vê-lo reiniciando nos logs é normal, não é falha. Está
+**saudável** quando `GET /health/ready` responde `{"db":true}` e a LP carrega em `:3000`.
+
 ### Modo fake (padrão) vs real
-- Padrão: `LLM_PROVIDER=stub`, `USE_FAKE_CRM=1`, `USE_FAKE_ADS=1` — roda sem segredos e é o modo do CI.
-- Real (opt-in): `LLM_PROVIDER=openai` + `OPENAI_API_KEY=...` (e flags de integração) — **sem mudar código**.
+- **Padrão** (sem segredos, é o modo do CI): `LLM_PROVIDER=stub`, `USE_FAKE_CRM=1`, `USE_FAKE_ADS=1`.
+- **LLM real** (opt-in, **sem mudar código**): `LLM_PROVIDER=openai` + `OPENAI_API_KEY=…` **ou**
+  `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=…`. Se o provider real falhar (incidente ou saldo esgotado),
+  a app **degrada para o comportamento determinístico** (a cotação/handoff seguem funcionando) — não quebra.
 
 ## Fluxo ponta a ponta
 
@@ -77,6 +90,10 @@ O comando imprime o e-mail e as URLs:
 - Jornada (JSON, p/ máquina/LLM): `GET http://localhost:8000/eval/leads/journey?email=...`
 - Jornada (**timeline HTML**): o mesmo endpoint com `&format=html`
 
+> A jornada só existe com **`ENVIRONMENT=local`** (o default) — rode o comando **após** a stack subir e
+> migrar. Para autenticar **manualmente** pela LP (fora do seed), o código do **OTP** é ecoado só em `local`
+> nos logs: `docker compose logs -f ai-service | grep otp_dev_echo`. O `seed` acima bypassa o OTP.
+
 ## Observabilidade
 
 - `GET /health` (liveness) · `GET /health/ready` (banco + migrations) · `GET /metrics` (Prometheus).
@@ -85,14 +102,48 @@ O comando imprime o e-mail e as URLs:
 
 ## Testes
 
+Do jeito reprodutível (o mesmo do CI — a integração precisa de um Postgres migrado):
+
 ```bash
-cd ai-service && pytest            # unit (sem infra) + integração (fakes + LLM stub)
-cd frontend && npm run build       # typecheck + build de produção
+cd ai-service
+pip install -r requirements.txt -r requirements-dev.txt   # Python 3.11
+alembic upgrade head                                        # cria o schema no DATABASE_URL
+pytest tests/unit tests/integration -q                      # unit (sem infra) + integração (fakes + stub)
+cd ../frontend && npm ci && npm run build                   # Node 20 — typecheck + build
 ```
 
-O **CI** (GitHub Actions, `.github/workflows/ci.yml`) roda `ruff` + `pytest` (unit + integração), o build do
-frontend e o build das imagens Docker — tudo com **fakes + LLM stub, sem segredos**. Testes contra
-provedores reais ficam em `ai-service/tests/real/` e são **opt-in** por `.env`.
+Sem um Postgres em `DATABASE_URL`, a suíte de **integração é pulada** (não falha) — não confunda com "verde".
+Alternativa com a stack de pé: `docker compose exec ai-service pytest tests/unit tests/integration -q`. O
+**CI** (`.github/workflows/ci.yml`) roda exatamente isso + o build das imagens Docker — tudo com **fakes +
+stub, sem segredos**. Testes contra provedores **reais** ficam em
+[`ai-service/tests/real/`](ai-service/tests/real) e são **opt-in** (pulados sem `LLM_PROVIDER` real + a chave).
+
+## Variáveis de ambiente
+
+Todas estão em [`.env.example`](.env.example) com defaults sensatos (o compose usa `${VAR:-default}`, então o
+`.env` é **opcional** — mas então tudo assume o default, inclusive `ENVIRONMENT=local`). As principais:
+
+| Variável | Default | Papel |
+|---|---|---|
+| `ENVIRONMENT` | `local` | **Chave de tudo:** `local` monta a **eval API** da jornada, ecoa o **OTP** nos logs e usa um `auth_pepper` de dev. Trocar para `production` desliga os três. |
+| `LLM_PROVIDER` | `stub` | `stub` (default/CI) · `openai` · `anthropic`. |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | — | Chave do provider real (opt-in). |
+| `ANTHROPIC_MODEL` | `claude-opus-4-8` | Modelo Anthropic — use `claude-haiku-4-5` p/ baratear a conversa. |
+| `USE_FAKE_CRM` / `USE_FAKE_ADS` | `1` | Fakes de CRM/Ads (default). |
+| `ENABLE_EVAL_API` | `false` | Liga a jornada **fora** de `local` (deploy público, com a rota protegida) — os dados são fakes. |
+| `POSTGRES_*`, `DATABASE_URL`, `AI_SERVICE_URL`, `LOG_LEVEL` | ver `.env.example` | Banco, ligação BFF→ai-service, log. |
+
+> ⚠️ `ENVIRONMENT` acopla a **jornada de avaliação**, o **echo do OTP** e o **pepper** — é o jeito mais fácil
+> de "sumir" com o fluxo de avaliação. Mantenha **`local`** para avaliar.
+
+## Troubleshooting
+
+- **Porta em uso.** O compose publica **3000** (LP), **8000** (API) e **5432** (Postgres) no host. Um Postgres
+  local já ocupando a **5432** impede o `db` de subir — pare-o ou remapeie a porta no `docker-compose.yml`.
+- **`worker` reiniciando no boot** — normal até o ai-service migrar (ver "Como rodar").
+- **OTP inválido** — o código muda a cada envio; pegue o atual com
+  `docker compose logs -f ai-service | grep otp_dev_echo` (só em `local`), ou use o `seed` (bypassa o OTP).
+- **`pytest` "passa" com a integração pulada** — falta o Postgres migrado em `DATABASE_URL`; rode como no CI.
 
 ## Decisões
 

@@ -653,3 +653,17 @@ do handoff (cenário do defeito → `queued` + evento na jornada). ✅
 e a política do orchestrator — auth/quota não retenta+abre o breaker, 429 retenta+degrada, breaker aberto
 curto-circuita). **Smoke real** (container com os SDKs): `LLM_PROVIDER=anthropic` **sem chave** → o adapter
 Anthropic é despachado e a app **degrada para o determinístico sem crash**; log de startup mascara as chaves. ✅
+
+## Fase 8b — README from-scratch (avaliador clona e roda)
+
+Endereçados os gaps da análise: **pré-requisitos por caminho** (Docker/Compose; Python 3.11 / Node 20 só p/
+local), **clone do zero** + primeiro boot (o `worker` reinicia até o ai-service migrar — por design; saudável
+quando `/health/ready` OK), **OTP em local** (`grep otp_dev_echo` nos logs; o seed bypassa), **receita de
+testes reprodutível** (install dev-deps + `alembic upgrade head` + `pytest tests/unit tests/integration`; sem
+DB a integração é *pulada*, não *verde*), **tabela de `.env`** com o acoplamento crítico do `ENVIRONMENT`
+(eval + OTP + pepper) + os novos `LLM_PROVIDER/ANTHROPIC_*`, **Troubleshooting** (porta 5432, worker no boot).
+Corrigido o **claim falso**: criado `ai-service/tests/real/` com um smoke real **opt-in** (pulado sem
+`LLM_PROVIDER` real + chave; o CI não o roda). `.env.example` += `ENABLE_EVAL_API`.
+
+**Verificado:** a receita documentada roda (`pytest tests/unit tests/integration` → 125); `tests/real` pula
+sem chave; todos os links do README existem; `ruff` limpo; grep-clean. ✅
