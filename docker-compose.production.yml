@@ -1,0 +1,93 @@
+# Stack de PRODUÇÃO/HOMOLOG do SegurAuto — isolado e auto-contido (DEC-ORB-047, plano Fase 8d).
+#
+# Diferenças vs docker-compose.yml (dev):
+#  - ZERO portas publicadas no host (a app é alcançada só pelo reverse proxy compartilhado, pela rede docker).
+#  - Rede docker PRÓPRIA e nomeada (`segurauto-network`) — o proxy externo referencia essa rede + o container
+#    `segurauto-frontend` (nada é compartilhado além desse único ponto de integração).
+#  - Postura de produção via `.env` no servidor (ENVIRONMENT=production, auth_pepper real, SMTP real, etc.).
+#
+# Uso no servidor:  docker compose -f docker-compose.production.yml up -d --build
+# Secrets/vars vêm de /opt/segurauto/.env (NÃO versionado). Segredos obrigatórios usam ${VAR:?...} (fail-fast).
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: segurauto-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-segurauto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obrigatório em produção}
+      POSTGRES_DB: ${POSTGRES_DB:-segurauto}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-segurauto} -d ${POSTGRES_DB:-segurauto}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [segurauto-network]
+    restart: unless-stopped
+
+  ai-service:
+    build: ./ai-service
+    container_name: segurauto-ai-service
+    environment: &app_env
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL obrigatório}
+      USE_FAKE_CRM: ${USE_FAKE_CRM:-1}
+      USE_FAKE_ADS: ${USE_FAKE_ADS:-1}
+      ENABLE_EVAL_API: ${ENABLE_EVAL_API:-false}
+      AUTH_PEPPER: ${AUTH_PEPPER:?AUTH_PEPPER obrigatório em produção}
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:-}
+      # LLM (stub default; real opt-in — DEC-ORB-046)
+      LLM_PROVIDER: ${LLM_PROVIDER:-stub}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-stub}
+      # E-mail (SMTP genérico — DEC-ORB-047). Fake default; real quando USE_FAKE_NOTIFICATIONS=0.
+      USE_FAKE_NOTIFICATIONS: ${USE_FAKE_NOTIFICATIONS:-1}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SSL: ${SMTP_SSL:-1}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-SegurAuto <noreply@localhost>}
+      MAIL_BCC: ${MAIL_BCC:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [segurauto-network]
+    restart: unless-stopped
+
+  worker: # processo SEPARADO consumindo a outbox (DEC-ORB-025); reinicia até o ai-service migrar (por design)
+    build: ./ai-service
+    container_name: segurauto-worker
+    command: ["python", "-m", "app.business.worker"]
+    environment: *app_env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [segurauto-network]
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: segurauto-frontend # o reverse proxy compartilhado faz proxy_pass p/ segurauto-frontend:3000
+    environment:
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
+      # Indexação por buscadores: OFF no homolog (noindex + robots disallow). Ligar só na prod real.
+      ALLOW_INDEXING: ${ALLOW_INDEXING:-false}
+    depends_on:
+      - ai-service
+    networks: [segurauto-network]
+    restart: unless-stopped
+
+networks:
+  segurauto-network:
+    name: segurauto-network # nome fixo (sem prefixo do projeto) → o proxy externo referencia como external
+
+volumes:
+  pgdata:
+    name: segurauto-pgdata

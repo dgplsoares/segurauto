@@ -1,0 +1,32 @@
+# Bloco de servidor (nginx) para publicar o SegurAuto atrás de um reverse proxy compartilhado.
+# É o ÚNICO ponto de integração com a infra externa — copie/adapte para o conf.d do seu proxy.
+#
+# Pressupostos (ajuste ao seu ambiente):
+#  - O proxy compartilhado participa da rede docker `segurauto-network` (external) para resolver o container
+#    `segurauto-frontend` por DNS do docker.
+#  - TLS terminado no edge (ex.: CDN "Flexible") → a origem fala HTTP:80. Se a origem terminar TLS, ajuste.
+#  - O SegurAuto NÃO publica portas no host; o acesso é só por esta rota interna.
+
+server {
+    listen 80;
+    server_name app-segurauto.diogosoares.com.br;
+
+    # App (Landing Page + BFF /api/*) — subdomínio dedicado ⇒ serve na raiz (sem basePath).
+    location / {
+        proxy_pass http://segurauto-frontend:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Jornada de avaliação (dados fake, DEC-ORB-042) — protegida por basic-auth no proxy.
+    location /eval/ {
+        auth_basic "restrito";
+        auth_basic_user_file /etc/nginx/segurauto.htpasswd;  # ajuste o caminho ao seu proxy
+        proxy_pass http://segurauto-frontend:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
