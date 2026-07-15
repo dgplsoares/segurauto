@@ -63,9 +63,13 @@ class PiiRedactingFilter(logging.Filter):
     """Rede de segurança: redige PII na linha renderizada (não substitui `_mask` nos call-sites)."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact_pii(record.getMessage())
+        record.msg = redact_pii(record.getMessage()).replace("\r", " ").replace("\n", " ")  # anti log-forging
         record.args = ()
-        if record.exc_text:
+        # Tracebacks só são formatados no handler (exc_text ainda é None aqui) → pré-formata e redige agora;
+        # com exc_text setado, o Formatter não re-formata o exc_info cru.
+        if record.exc_info:
+            record.exc_text = redact_pii(logging.Formatter().formatException(record.exc_info))
+        elif record.exc_text:
             record.exc_text = redact_pii(record.exc_text)
         return True
 

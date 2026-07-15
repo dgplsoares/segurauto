@@ -1,7 +1,10 @@
-"""Fase 5a.2 — masking de PII estendido (E8): CEP/telefone/placa case-insensitive SEM corromper UUID/ids."""
+"""Fase 5a.2 — masking de PII estendido (E8): CEP/telefone/placa case-insensitive SEM corromper UUID/ids,
+redação de tracebacks e anti log-forging (achados da revisão adversarial)."""
+import logging
+import sys
 import uuid
 
-from app.shared.observability import redact_pii
+from app.shared.observability import PiiRedactingFilter, redact_pii
 
 
 def test_masks_cep_phone_and_lowercase_plate():
@@ -26,3 +29,19 @@ def test_does_not_corrupt_uuid_or_request_id():
     ]
     for token in samples:
         assert redact_pii(f"rid={token} ok") == f"rid={token} ok", token
+
+
+def test_filter_redacts_pii_in_traceback():
+    try:
+        raise ValueError("falha com ana@example.com e cep 01310-100")
+    except ValueError:
+        rec = logging.LogRecord("n", logging.ERROR, __file__, 1, "erro", None, sys.exc_info())
+    PiiRedactingFilter().filter(rec)
+    assert rec.exc_text and "[email]" in rec.exc_text and "[cep]" in rec.exc_text
+    assert "ana@example.com" not in rec.exc_text
+
+
+def test_filter_collapses_crlf_in_message():
+    rec = logging.LogRecord("n", logging.INFO, __file__, 1, "linha1\r\nFAKE LOG forjado", None, None)
+    PiiRedactingFilter().filter(rec)
+    assert "\n" not in rec.msg and "\r" not in rec.msg

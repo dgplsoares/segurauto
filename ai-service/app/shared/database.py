@@ -15,9 +15,10 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        # echo=False explícito: nunca logar SQL com parâmetros (PII) — DEC-ORB-036.
+        # echo=False não loga SQL; hide_parameters=True impede que os parâmetros (PII) apareçam em
+        # mensagens de exceção/repr (ex.: IntegrityError) — DEC-ORB-036.
         _engine = create_async_engine(
-            get_settings().database_url, pool_pre_ping=True, future=True, echo=False
+            get_settings().database_url, pool_pre_ping=True, future=True, echo=False, hide_parameters=True
         )
     return _engine
 
@@ -48,6 +49,7 @@ def get_chat_engine() -> AsyncEngine:
         _chat_engine = create_async_engine(
             s.database_url,
             echo=False,
+            hide_parameters=True,  # parâmetros (PII) fora das mensagens de exceção — DEC-ORB-036
             future=True,
             pool_pre_ping=True,
             pool_size=s.chat_pool_size,

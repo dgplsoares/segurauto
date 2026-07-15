@@ -48,3 +48,20 @@ def test_extract_has_broker_with_code():
 
 def test_extract_nothing_from_offtopic():
     assert extract_slots_from_text("qual a capital da frança?") == {}
+
+
+def test_validate_vehicle_rejects_punctuation_keeps_model_and_plate():
+    assert validate_slots({"vehicle": "Onix"})["vehicle"] == "Onix"
+    assert validate_slots({"vehicle": "ABC1D23"})["vehicle"] == "ABC1D23"
+    assert "vehicle" not in validate_slots({"vehicle": "DROP TABLE; <b>x</b> payload"})  # E6: valor arbitrário
+
+
+def test_broker_code_requires_has_broker_true():
+    assert "broker_code" not in validate_slots({"has_broker": False, "broker_code": "ABC123"})  # stale
+    assert "broker_code" not in validate_slots({"broker_code": "ABC123"})  # sem has_broker
+    assert validate_slots({"has_broker": True, "broker_code": "ABC123"})["broker_code"] == "ABC123"
+
+
+def test_extract_codigo_postal_is_not_a_broker_code():
+    out = extract_slots_from_text("meu código postal é 01001-000")
+    assert "broker_code" not in out and out.get("zipcode") == "01001000"

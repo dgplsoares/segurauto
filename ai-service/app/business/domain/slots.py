@@ -10,6 +10,8 @@ SLOT_KEYS = ("vehicle", "zipcode", "has_broker", "broker_code")
 
 _ZIP_RE = re.compile(r"^\d{5}-?\d{3}$")
 _BROKER_RE = re.compile(r"^[A-Za-z0-9]{1,20}$")
+# vehicle = placa ou marca/modelo: alfanumérico + espaço/./-/ (rejeita pontuação/injeção tipo ;<>{}), cap 80.
+_VEHICLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ./-]{0,79}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")  # CR/LF/controle — anti log-forging (E8)
 _VEHICLE_MAX = 80
 
@@ -18,7 +20,10 @@ _PLATE_TEXT_RE = re.compile(r"\b([A-Za-z]{3}-?\d[A-Za-z0-9]\d{2})\b")
 _CEP_TEXT_RE = re.compile(r"\b(\d{5}-?\d{3})\b")
 _NO_BROKER_RE = re.compile(r"(?i)\b(n[ãa]o\s+tenho|sem|nenhum)\s+corretor")
 _HAS_BROKER_RE = re.compile(r"(?i)\b(tenho|com|meu|j[áa]\s+tenho)\s+corretor")
-_BROKER_CODE_RE = re.compile(r"(?i)c[óo]digo[^A-Za-z0-9]{0,4}([A-Za-z0-9]{3,20})")  # tolera "é/:/=" no meio
+# tolera "é/:/=" entre "código" e o valor; lookahead negativo evita falsos-positivos ("código postal" = CEP).
+_BROKER_CODE_RE = re.compile(
+    r"(?i)c[óo]digo(?!\s+postal|\s+de\s+barras|\s+de\s+[áa]rea)[^A-Za-z0-9]{0,4}([A-Za-z0-9]{3,20})"
+)
 
 
 def _clean(value: str, maxlen: int) -> str:
@@ -32,7 +37,7 @@ def validate_slots(raw: dict) -> dict:
         return out
     if isinstance(raw.get("vehicle"), str):
         vehicle = _clean(raw["vehicle"], _VEHICLE_MAX)
-        if vehicle:
+        if vehicle and _VEHICLE_RE.match(vehicle):  # schema de VALOR (E6): descarta pontuação/injeção
             out["vehicle"] = vehicle
     zipcode = raw.get("zipcode")
     if isinstance(zipcode, str) and _ZIP_RE.match(zipcode.strip()):
@@ -42,6 +47,9 @@ def validate_slots(raw: dict) -> dict:
     broker = raw.get("broker_code")
     if isinstance(broker, str) and _BROKER_RE.match(broker.strip()):
         out["broker_code"] = broker.strip().upper()
+    # Invariante cross-field: broker_code só existe quando has_broker é True (senão descarta código stale).
+    if out.get("has_broker") is not True:
+        out.pop("broker_code", None)
     return out
 
 
