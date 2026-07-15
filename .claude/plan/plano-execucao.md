@@ -79,25 +79,34 @@ Meta: fechar os bugs reais da auditoria adversarial antes do chat.
 
 - [x] **4a — Auth/OTP** ([`fase-4/4a-auth-otp.md`](fase-4/4a-auth-otp.md)) (DEC-ORB-037): tabelas `auth_sessions`/`otp_codes` (migration 0003), `AuthService`, `NotificationPort` fake, `/auth/request-otp` + `/auth/verify-otp` + `/auth/logout`, **`require_session`** (token→lead_id); sessão **só pós-OTP**, e-mail=identidade sem UNIQUE, OTP **cooldown-não-burn** + rate-limit, sliding+absoluto. *Verificado:* `ruff` + `pytest` 52/52 (anti-lockout, expiração, reuso); docker (auto-migrate 0003, 202/401, OTP nunca logado). ✅
 - [x] **4b — support_agent single-turn** ([`fase-4/4b-support-agent.md`](fase-4/4b-support-agent.md)): grafo LangGraph `guard_in→retrieve→[cond]→generate|refuse`; `AiPort.support(query,session)` + `POST /ai/support` + `POST /support/chat` **autenticado** (`require_session`); `rag_mode=rag_preferred`. *Verificado:* `ruff` + `pytest` 58/58; docker — `/support/chat` **401 sem token**, `/ai/support` in-domain sufficient / out-domain recusa+handoff. ✅
-- [ ] **4c — LP conectada** ([`fase-4/4c-lp-conectada.md`](fase-4/4c-lp-conectada.md)): Next.js (Figma Make) — `LeadForm`→`/api/lead` (BFF)→`/leads`; **modal de OTP** (botão "Já tem cadastro? Entre", 5 campos, timer 30s); `SupportChat`→`/api/support`; consent LGPD. *Verif.:* teste do BFF/form + smoke E2E.
+- [x] **4c — LP conectada** ([`fase-4/4c-lp-conectada.md`](fase-4/4c-lp-conectada.md)): Next.js (Figma Make) — `LeadForm`→`/api/lead` (BFF)→`/leads`; **modal de OTP** (botão "Já tem cadastro? Entre", 5 campos, timer 30s); `SupportChat`→`/api/support`; consent LGPD. **Entregue junto da F5c** (porte da LP completa + BFF fino + máquina de estados `LeadFlowProvider`). *Verificado:* `next build` + smoke E2E do fluxo prompt→cadastro→OTP→chat. ✅
 
 > **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase.
 
-## Fase 5 — Conversa de cotação (multi-turn)  ·  V1.5
-Meta: o happy path chat-first (prompt no hero → coleta multi-turn → cotação no CRM → PDF).
+## Fase 5 — Conversa de cotação (multi-turn)  ·  V1.5  ·  concluída
+**Refatiada em 5a / 5b / 5c** — reanálises, subfases e revisões adversariais em `diario-de-fases.md`;
+decisões em DEC-ORB-038..044. Meta: o happy path chat-first (prompt no hero → coleta multi-turn → cotação
+no CRM → card/PDF).
 
-- [ ] Entrada **prompt-first no hero** + extração de slots (DEC-ORB-027)
-- [ ] Agente conversacional **multi-turn** (slot-filling: veículo, CEP, *tem corretor?/código*) com **sessão persistida** (`chat_sessions`/`chat_messages` escopados, `UNIQUE(session_id,seq)`, lock por sessão) — invariantes de `../docs/isolamento-leads.md`
-- [ ] Tools **read-inline**: `quote_tool`(CRM `price_quote`) + `pdf_tool` (fake) — o número da cotação vem do **tool**, nunca do LLM
-- [ ] Serviço **fake de UTM** no frontend (4 campanhas: 2 Meta + 2 Google, sorteio por submissão)
-- **Verificar:** coleta → cotação estruturada + PDF; isolamento de sessão; guardrail nos args das tools.
+- [x] **5a — Persistência + agente** (DEC-ORB-038/039/040/041): `chat_sessions`/`chat_messages` escopados
+  (`UNIQUE(session_id,seq)`, `FOR UPDATE`=lock+anti-IDOR), pool isolado + timeouts, `canonical_lead_id`,
+  `ConverseAgent` (LangGraph stateless) + extração **determinística** de slots no business (nunca no LLM).
+- [x] Entrada **prompt-first no hero** + extração de slots (DEC-ORB-027) — sensível ao contexto (`expected_slot`).
+- [x] **5b — Cotação** (DEC-ORB-043): `quote_tool` **orquestrado pelo business** (número do CRM fake, não do
+  LLM), `broker_code` autorizado server-side, cotação em centavos escopada à sessão; `pdf_ref` = marcador.
+- [x] **5c — LP + card + UTM**: chat multi-turn no frontend (`QuoteCard`), serviço **fake de UTM** (4 campanhas
+  2 Meta + 2 Google, **sorteio por submissão**), reconciliação com a LP portada.
+- **Verificado:** `ruff` + `pytest` **96** (56 unit + 40 integração) + `next build`; 3 revisões adversariais
+  (5a.2/5b/5c) + smoke real multi-turn (slots → **card R$ 1.200,00**; isolamento de sessão; guardrail nas tools). ✅
 
 ## Fase 6 — Personalização + Ações + Click_ID  ·  V1.5
 Meta: personalizar a cotação e disparar ações via outbox.
 
 - [ ] Personalização/re-cotação (seleção de coberturas) — marketplace multi-seguradora = V2
 - [ ] Ações **write-through-outbox**: `crm_update` / `notify` (email/WhatsApp/SMS via `NotificationPort` fake) / `conversion` — só após **confirmação explícita**, idempotentes por `event_id=(session,tipo,turno)`
-- [ ] **Audit de integração** (habilita a jornada da DEC-ORB-042): persistir o **request/response real** de/para CRM/Ads/e-mail (estender `outbox` com `result` **ou** tabela append-only `integration_events` com `lead_id`/`session_id`/tipo/direção/payloads)
+- [x] **Audit de integração** (habilita a jornada da DEC-ORB-042) — **antecipado na F5b** (DEC-ORB-044):
+  tabela append-only `integration_events` (`lead_id`/`session_id`/tipo/payloads) já grava o request/response
+  real de `crm_sync`/`ads_conversion`/`crm_price_quote`/`notify_otp` (o OTP nunca registra o código).
 - [ ] **Handoff humano**: detectar + flag ortogonal + mensagem honesta + intent na outbox (handler fake)
 - [ ] Atribuição por **Click_ID**: capturar gclid/fbclid na LP → persistir no lead → enviar na conversão
 - **Verificar:** ação 2× → efeito 1×; conversão com `click_id` deduplicada.
@@ -107,11 +116,13 @@ Meta: gate automatizado e stack reprodutível do zero.
 
 - [ ] `.github/workflows/ci.yml`: job **ai-service** (pytest mock + ruff), job **frontend** (build + test), job **docker build**
 - [ ] `/metrics` completo + **README de entrega** (stack, fake vs real, decisões, observabilidade, próximos passos)
-- [ ] **Endpoint de jornada do lead para avaliação** (DEC-ORB-042, **gated demo-only**): `GET
-  /eval/leads/journey?email=` (JSON agregado: cadastro + mensagens + outbox + cotações; resolve pela
-  identidade canônica) + `GET /eval/leads` (descoberta) + **seed de demo** (um comando gera a jornada) +
-  opcional `?format=html`. Fail-closed fora de `local`. Payloads reais de CRM/Ads/e-mail dependem do audit
-  de integração da F6 (senão mostra intents+status).
+- [x] **Endpoint de jornada do lead para avaliação** (DEC-ORB-042, **gated demo-only**) — **concluído
+  (antecipado)**: módulo `app/eval/` (read-only). `GET /eval/leads/journey?email=` (JSON **agregado por
+  e-mail**: cadastro + mensagens + outbox + cotações + `integration_events`; resolve pela identidade
+  canônica, *fallback* lead mais recente) + `GET /eval/leads` (descoberta) + **seed de demo** (`python -m
+  app.eval.seed` dirige o fluxo real) + `?format=html` (timeline escapada anti-XSS). **Fail-closed** fora de
+  `local` (montagem + rota). *Verificado:* +9 testes (7 integração + 2 unit render) e revisão adversarial
+  (0 defeitos de produção; 4 fixes de qualidade de teste). ✅
 - [ ] Reconciliar `diario-de-fases.md` + `mem_session_summary`
 - **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST persiste + (worker) sincroniza fakes, `/health` OK.
 
