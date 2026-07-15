@@ -87,6 +87,37 @@
 
 ---
 
-## Fase 3 — Worker + agente de qualificação + RAG
+## Fase 3 — Enriquecimento assíncrono (refatiada em 3a/3b/3c)
 
-**Reanálise (antes):** _(a preencher ao iniciar a Fase 3)_
+Plano-mestre em `fase-3/`. Decisões DEC-ORB-022..033 formalizadas. Reanálise dedicada por subfase.
+
+### Fase 3a — RAG
+
+**Reanálise (antes):**
+- **Chunking simples** do `knowledge_base.md`: agrupar parágrafos (`\n\n`) até ~600 chars.
+- **`EmbeddingsPort`:** `StubEmbedder` determinístico (vetor 1536 semeado por hash do texto,
+  `is_semantic=False` → retrieval por **keyword**); `OpenAIEmbedder` lazy/opt-in (`is_semantic=True`).
+- **`VectorStore`:** `search_keyword` (`ILIKE` sobre `ai.embeddings.chunk`) e `search_semantic`
+  (pgvector `<=>` cosine, vetor passado como literal `CAST(:q AS vector)`). Ingestão sempre grava
+  `documents` + `embeddings` (com o pseudo-vetor do stub, para o modo real funcionar sem migração extra).
+- **`RagService`:** escolhe modo por `embedder.is_semantic`; **sempre aplica `HeuristicRerank`** para um
+  score uniforme; **Context Validation** (min chunks + min score) → `rag_mode=rag_preferred` marca
+  `sufficient=False` (o agente decide recusa/handoff, na 3b/4).
+- **Testes:** unit (chunking, stub determinístico, `RagService` com `FakeVectorStore` — keyword,
+  suficiente vs. insuficiente) sem infra; integração (ingest do seed → keyword recupera trecho relevante +
+  plumbing do `search_semantic` determinístico com pgvector).
+- **Riscos:** passar vetor 1536 como literal p/ pgvector; garantir CI sem rede (stub + keyword); a base é
+  genérica (sem escopo de lead — isolamento não se aplica à 3a).
+
+**Descobertas (depois):**
+- **RAG dual-mode implementado e verificado** com pgvector real: modo stub = keyword
+  (`is_semantic=False`), modo real = pgvector `<=>` cosine. Ingest do seed → keyword recupera o trecho
+  relevante; o *plumbing* semântico executa (embedding armazenado como **`vector(1536)`**).
+- **`StubEmbedder`** determinístico (`random.Random` semeado por hash), normalizado, dim 1536 — gravado
+  como literal `CAST(:e AS vector)`.
+- **Seed CLI idempotente** (`python -m app.ai.rag.seed`): 1ª vez ingere 4 chunks; 2ª vez faz *skip*.
+- **Decisão de impl:** `search_keyword` usa `OR` de `LIKE` (não `ANY(:array)`) para evitar incerteza de
+  binding de array; **sufficiency** = min_chunks + min_score, com `HeuristicRerank` dando score uniforme.
+- **Sem mudança de escopo.** Próxima: **3b** (qualification_agent LangGraph + ModelOrchestrator + `/ai/qualify`).
+
+**Verificado (3a):** `ruff` limpo + `pytest` **30/30** (unit + integração); seed CLI + idempotência; `vector_dims=1536`. ✅

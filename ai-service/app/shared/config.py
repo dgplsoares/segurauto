@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     llm_provider: str = "stub"  # stub | openai
     openai_api_key: str | None = None
 
+    # Embeddings — stub determinístico default; OpenAI opt-in (DEC-ORB-023)
+    embeddings_provider: str = "stub"  # stub | openai
+
     @property
     def masked_openai_key(self) -> str:
         """Nunca logar a chave em claro (DEC-ORB-018 — PII/segredos)."""
