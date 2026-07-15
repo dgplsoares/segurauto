@@ -478,3 +478,29 @@ card**; **(#3 LOW)** `status='error'` era código morto → comentário honesto 
 **(#1 LOW documentado):** autorização de `broker_code` no CRM fake é pertença a um set curto sem
 vínculo/rate-limit — **fake da V1** (o adapter real vincula/limita); comentário adicionado. `pytest` **93**
 (53 unit + 40 integração). ✅
+
+## Fase 5c — Frontend (reconciliação do protótipo → Next.js) · V1.5
+
+Fatiada: **5c.1** (port + ligar ao BFF) + **5c.2** (chat multi-turn + card + UTM). Reanálise em
+`fase-5/5c-frontend-reconciliacao.md`. O protótipo (Vite+React+Tailwind v4+shadcn) foi clonado na zona
+`workspace/` (fora do git). Decisões: fatiado; LP completa.
+
+### Fase 5c.1 — Port da UI + ligar o data layer
+
+**Descobertas (depois):**
+- **Port delimitado:** das deps do protótipo, **nenhuma pesada** era usada (MUI/react-router/slick/dnd = 0);
+  só **lucide + motion + react-hook-form + shadcn/ui (8 componentes) + Tailwind v4**. Sem `figma:asset`/assets
+  externos. Portados 32 arquivos (`v2/*` + fluxo + 8 `ui/*` + ilustrações + estilos + `lib` + `content`)
+  **preservando a estrutura relativa** (imports resolvem iguais).
+- **Contrato drop-in:** o `lib/api.ts` do protótipo tinha as **mesmas 4 funções/endpoints/tipos** que o
+  nosso BFF → reescrevi o `lib/api.ts` com `fetch` REAL (mesmo contrato); os componentes consomem sem mudança.
+- **Setup Next.js:** Tailwind v4 via `@tailwindcss/postcss` (`postcss.config.js`), `app/globals.css` encadeia
+  `fonts/tailwind/theme.css`, `@source` apontando p/ `app|components|content|lib`. `app/page.tsx` = composição
+  da LP com `LeadFlowProvider` (`"use client"` → toda a árvore vira client). BFF (route handlers) preservado.
+- **Neutralidade:** código do produto sem referência à ferramenta de design (comentários neutralizados;
+  `components/figma/ImageWithFallback` — não usado — removido). Os docs de processo creditam a ferramenta.
+- **Sem mudança de escopo. 5c.1 concluída.** Próximo: **5c.2** (chat multi-turn + card + UTM).
+
+**Verificado (5c.1):** `next build` — **compila + typecheck + lint OK**, `/` gerada (a LP completa, 182 kB
+First Load JS), 4 route handlers dinâmicos. **Smoke:** LP renderiza (`GET /` 200, HTML de 71 KB com "SegurAuto"
++ hero); caminho do BFF portado OK (`POST /api/lead` 201, `request-otp` 202). grep-clean LIMPO. ✅
