@@ -7,6 +7,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, KeyboardEvent } from "react";
 
+import { createLead, requestOtp, sendChatMessage, verifyOtp } from "@/lib/api";
+
 type Stage = "hero" | "signup" | "login" | "otp" | "chat";
 type Msg = { role: "user" | "assistant"; text: string };
 
@@ -126,34 +128,17 @@ export default function Home() {
     setStage("hero");
   }
 
-  async function requestOtp(mail: string) {
-    // 202 neutro sempre — não revela se o e-mail existe.
-    await fetch("/api/auth/request-otp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: mail }),
-    });
-  }
-
   async function submitSignup(e: FormEvent) {
     e.preventDefault();
     if (!consent) { setError("É necessário aceitar o consentimento (LGPD)."); return; }
     setBusy(true); setError(null);
     try {
-      const res = await fetch("/api/lead", {
-        method: "POST",
-        headers: { "content-type": "application/json", "Idempotency-Key": idemKey },
-        // CEP é coletado no chat (F5); enquanto o backend exige, enviamos um provisório.
-        body: JSON.stringify({ name, email, phone, vehicle, zipcode: "00000000", consent, source: "landing_page" }),
-      });
-      if (res.status !== 201 && res.status !== 200) {
-        setError("Não foi possível concluir o cadastro. Tente novamente.");
-        return;
-      }
+      // CEP é coletado no chat (F5); enquanto o backend exige, enviamos um provisório.
+      await createLead({ name, email, phone, vehicle, zipcode: "00000000", consent, source: "landing_page" }, idemKey);
       await requestOtp(email);
       setStage("otp");
     } catch {
-      setError("Erro de conexão. Tente novamente.");
+      setError("Não foi possível concluir o cadastro. Tente novamente.");
     } finally {
       setBusy(false);
     }
@@ -176,22 +161,13 @@ export default function Home() {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, code }),
-      });
-      if (res.status !== 200) {
-        setError("Código inválido ou expirado.");
-        return;
-      }
-      const data = (await res.json()) as { token: string };
-      setToken(data.token);
+      const session = await verifyOtp(email, code);
+      setToken(session.token);
       setStage("chat");
       const first = prompt.trim();
-      if (first) void sendChat(first, data.token);
+      if (first) void sendChat(first, session.token);
     } catch {
-      setError("Erro de conexão. Tente novamente.");
+      setError("Código inválido ou expirado.");
     } finally {
       setBusy(false);
     }
@@ -210,20 +186,11 @@ export default function Home() {
     setChatInput("");
     setTyping(true);
     try {
-      const res = await fetch("/api/support", {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ message: msg }),
-      });
-      if (!res.ok) {
-        setMessages((m) => [...m, { role: "assistant", text: "Desculpe, tive um problema agora. Pode tentar de novo?" }]);
-        return;
-      }
-      const data = (await res.json()) as { answer: string; handoff_suggested: boolean };
-      const suffix = data.handoff_suggested ? "\n\n💬 Posso te encaminhar a um corretor, se preferir." : "";
-      setMessages((m) => [...m, { role: "assistant", text: data.answer + suffix }]);
+      const reply = await sendChatMessage(msg, tok);
+      const suffix = reply.handoffSuggested ? "\n\n💬 Posso te encaminhar a um corretor, se preferir." : "";
+      setMessages((m) => [...m, { role: "assistant", text: reply.answer + suffix }]);
     } catch {
-      setMessages((m) => [...m, { role: "assistant", text: "Falha de conexão com o consultor. Tente novamente." }]);
+      setMessages((m) => [...m, { role: "assistant", text: "Desculpe, tive um problema agora. Pode tentar de novo?" }]);
     } finally {
       setTyping(false);
     }
