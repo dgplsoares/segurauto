@@ -9,6 +9,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { createLead, requestOtp, verifyOtp, type LeadPayload } from "./api";
 import { track } from "./analytics";
+import { pickCampaign, type UtmCampaign } from "./utm";
 
 export type FlowStep = "idle" | "presignup" | "otp" | "chat";
 export type FlowMode = "signup" | "login";
@@ -43,6 +44,8 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
   const [initialPrompt, setInitialPrompt] = useState("");
   const [email, setEmail] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  // UTM fake sorteado uma vez por sessão de navegação (F5c.2): a plataforma vira o `source` do lead.
+  const [utm] = useState<UtmCampaign>(() => pickCampaign());
 
   const value = useMemo<LeadFlowContextValue>(() => {
     return {
@@ -73,8 +76,9 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
       },
 
       async submitLead(data) {
-        track("signup_submit");
-        await createLead({ ...data, zipcode: "00000-000", source: "landing_page" });
+        track("signup_submit", { campaign: utm.campaign });
+        // `source` = plataforma do UTM sorteado (meta|google) — atribuição de campanha (F5c.2).
+        await createLead({ ...data, zipcode: "00000-000", source: utm.platform });
         setEmail(data.email);
         await requestOtp(data.email);
         track("otp_view", { mode: "signup" });
@@ -101,7 +105,7 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
         setStep("idle");
       },
     };
-  }, [step, mode, initialPrompt, email, token]);
+  }, [step, mode, initialPrompt, email, token, utm]);
 
   return <LeadFlowContext.Provider value={value}>{children}</LeadFlowContext.Provider>;
 }

@@ -89,3 +89,45 @@ export async function sendChatMessage(message: string, token: string): Promise<C
   if (!res.ok) throw new ApiError(res.status, "Falha ao falar com o consultor.");
   return (await res.json()) as ChatResult;
 }
+
+// --- Conversa de cotação MULTI-TURN (F5c.2) ---------------------------------
+
+export interface QuoteCard {
+  quote_id: string;
+  premium_cents: number;
+  currency: string;
+  coverages: string[];
+  broker_applied: boolean;
+  pdf_ref: string | null;
+}
+
+export interface TurnResult {
+  reply: string;
+  slots: Record<string, unknown>;
+  missing_slots: string[];
+  ready_to_quote: boolean;
+  handoff_suggested: boolean;
+  quote: QuoteCard | null;
+}
+
+/** POST /api/support/sessions — cria a sessão de conversa de cotação (multi-turn). */
+export async function createChatSession(token: string): Promise<{ session_id: string }> {
+  const res = await fetch("/api/support/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new ApiError(res.status, "Não foi possível iniciar a conversa.");
+  return (await res.json()) as { session_id: string };
+}
+
+/** POST /api/support/sessions/{id}/messages — um turno; devolve reply + card quando os slots completam. */
+export async function sendTurn(sessionId: string, message: string, token: string): Promise<TurnResult> {
+  const res = await fetch(`/api/support/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message, client_turn_id: newIdempotencyKey() }),
+  });
+  if (!res.ok) throw new ApiError(res.status, "Falha ao enviar a mensagem.");
+  return (await res.json()) as TurnResult;
+}

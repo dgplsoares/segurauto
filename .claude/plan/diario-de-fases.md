@@ -504,3 +504,25 @@ Fatiada: **5c.1** (port + ligar ao BFF) + **5c.2** (chat multi-turn + card + UTM
 **Verificado (5c.1):** `next build` — **compila + typecheck + lint OK**, `/` gerada (a LP completa, 182 kB
 First Load JS), 4 route handlers dinâmicos. **Smoke:** LP renderiza (`GET /` 200, HTML de 71 KB com "SegurAuto"
 + hero); caminho do BFF portado OK (`POST /api/lead` 201, `request-otp` 202). grep-clean LIMPO. ✅
+
+### Fase 5c.2 — Chat de cotação multi-turn + card + UTM
+
+**Descobertas (depois):**
+- **Backend polish do `ConverseAgent`** (para a demo ficar boa sem LLM real): (1) `_route` **nunca recusa
+  durante o slot-filling** (faltam slots → pede o próximo); (2) em modo **stub** a resposta é
+  **determinística** (`_fallback_reply` com "Anotado!" quando há progresso) — antes o turno 1 recusava e os
+  demais ecoavam `[stub]`. Número/decisão da cotação seguem determinísticos no business.
+- **BFF multi-turn:** route handlers `POST /api/support/sessions` e `POST /api/support/sessions/{id}/messages`
+  (proxies finos, repassam o Bearer). `lib/api.ts` ganhou `createChatSession`/`sendTurn` + tipos
+  `QuoteCard`/`TurnResult`.
+- **`chat-panel` reescrito:** ao abrir, cria a sessão e semeia o prompt do hero; cada turno chama `sendTurn` e
+  renderiza o **card de cotação** (`quote-card.tsx`) quando `quote` chega. Handoff mantido.
+- **UTM fake (`lib/utm.ts`):** sorteia 1 de 4 campanhas (2 Meta + 2 Google) por sessão; a **plataforma vira o
+  `source`** do lead (atribuição + bônus na rubrica); a campanha vai para a instrumentação.
+- **Sem mudança de escopo. 5c.2 concluída → FASE 5c COMPLETA → FASE 5 (V1.5) COMPLETA.** Falta a jornada
+  (DEC-ORB-042, F7) e o LOW de `QualificationResult`.
+
+**Verificado (5c.2):** `ruff` + `pytest` **95** (55 unit incl. `_route`/`_fallback_reply`; 40 integração) +
+`next build` (route table com os 2 novos handlers). **Smoke multi-turn via BFF do frontend:** turno 1 pede a
+placa → turno 2 "Anotado!" + pede placa → turno 3 completa → **"preparei a sua cotação 🚗" + card** (R$
+1.200/ano, 5 coberturas, `pdf_ref`). ✅

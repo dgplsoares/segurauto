@@ -5,8 +5,9 @@ import { ArrowUp, Bot, UserRound, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "./ui/button";
 import { ChatBubble, TypingBubble, type ChatMessage } from "./chat-bubble";
+import { QuoteCard } from "./quote-card";
 import { useLeadFlow } from "../lib/lead-flow-context";
-import { sendChatMessage } from "../lib/api";
+import { createChatSession, sendTurn, type QuoteCard as Quote } from "../lib/api";
 import { track } from "../lib/analytics";
 import { brand } from "../content/site-content";
 
@@ -21,21 +22,23 @@ export function ChatPanel() {
   const [typing, setTyping] = useState(false);
   const [input, setInput] = useState("");
   const [handoff, setHandoff] = useState(false);
+  const [quote, setQuote] = useState<Quote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
+  const sessionRef = useRef<string | null>(null);
 
-  // Ao abrir, semeia a conversa com o prompt do hero como 1ª mensagem.
+  // Ao abrir: cria a sessão de cotação e semeia com o prompt do hero como 1ª mensagem.
   useEffect(() => {
     if (open && !startedRef.current) {
       startedRef.current = true;
-      const firstText = initialPrompt || "Olá! Quero cotar meu seguro de auto.";
-      setMessages([{ id: nextId(), role: "user", text: firstText }]);
-      void respond(firstText);
+      void start();
     }
     if (!open) {
       startedRef.current = false;
+      sessionRef.current = null;
       setMessages([]);
       setHandoff(false);
+      setQuote(null);
       setInput("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -43,13 +46,33 @@ export function ChatPanel() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, typing]);
+  }, [messages, typing, quote]);
 
-  const respond = async (text: string) => {
+  const start = async () => {
+    const firstText = initialPrompt || "Olá! Quero cotar meu seguro de auto.";
+    setMessages([{ id: nextId(), role: "user", text: firstText }]);
     setTyping(true);
     try {
-      const res = await sendChatMessage(text, token ?? "");
-      setMessages((m) => [...m, { id: nextId(), role: "assistant", text: res.answer }]);
+      const { session_id } = await createChatSession(token ?? "");
+      sessionRef.current = session_id;
+      await respond(firstText, false);
+    } catch {
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: "assistant", text: "Não consegui iniciar a conversa. Pode reabrir?" },
+      ]);
+      setTyping(false);
+    }
+  };
+
+  const respond = async (text: string, showTyping = true) => {
+    const sid = sessionRef.current;
+    if (!sid) return;
+    if (showTyping) setTyping(true);
+    try {
+      const res = await sendTurn(sid, text, token ?? "");
+      setMessages((m) => [...m, { id: nextId(), role: "assistant", text: res.reply }]);
+      if (res.quote) setQuote(res.quote);
       setHandoff(res.handoff_suggested);
     } finally {
       setTyping(false);
@@ -58,7 +81,7 @@ export function ChatPanel() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || typing) return;
+    if (!text || typing || !sessionRef.current) return;
     track("chat_message", { length: text.length });
     setMessages((m) => [...m, { id: nextId(), role: "user", text }]);
     setInput("");
@@ -111,6 +134,8 @@ export function ChatPanel() {
                 <ChatBubble key={m.id} message={m} />
               ))}
               {typing && <TypingBubble />}
+
+              {quote && !typing && <QuoteCard quote={quote} />}
 
               {handoff && !typing && (
                 <div className="flex flex-wrap gap-2 pl-10">

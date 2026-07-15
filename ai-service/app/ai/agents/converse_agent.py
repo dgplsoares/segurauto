@@ -50,15 +50,22 @@ async def _retrieve_node(state: ConverseState) -> dict:
     return {"context": result.context, "sufficient": result.sufficient}
 
 
-def _fallback_reply(missing: list) -> str:
-    if missing:
-        return f"Para seguir com a sua cotação, me informe {_SLOT_LABELS.get(missing[0], missing[0])}."
-    return "Tenho tudo o que preciso — já vou preparar a sua cotação."
+def _fallback_reply(missing: list, progressed: bool = False) -> str:
+    if not missing:
+        return "Perfeito, tenho tudo o que preciso — preparei a sua cotação. 🚗"
+    label = _SLOT_LABELS.get(missing[0], missing[0])
+    prefix = "Anotado! " if progressed else ""
+    return f"{prefix}Para seguir com a sua cotação, me informe {label}."
 
 
 def _make_respond_node(orchestrator: ModelOrchestrator, config: AgentConfig):
     async def _respond_node(state: ConverseState) -> dict:
         missing = state.get("missing", [])
+        progressed = bool(state.get("progressed"))
+        # Sem LLM real (stub de CI/local), a resposta DETERMINÍSTICA conduz o slot-filling — melhor que o
+        # eco do stub; o número/decisão da cotação já vêm do business (não do LLM).
+        if config.provider != "openai":
+            return {"reply": _fallback_reply(missing, progressed)}
         filled = ", ".join(f"{k}={v}" for k, v in (state.get("slots") or {}).items()) or "nenhum ainda"
         faltam = ", ".join(_SLOT_LABELS.get(m, m) for m in missing) or "nada (dados completos)"
         history = "\n".join(f"{t.get('role')}: {t.get('content')}" for t in (state.get("transcript") or [])[-6:])
@@ -67,7 +74,7 @@ def _make_respond_node(orchestrator: ModelOrchestrator, config: AgentConfig):
             f"Conversa até aqui:\n{history}\n\nContexto (base de conhecimento):\n{state.get('context', '')}"
         )
         reply = await orchestrator.complete(system=system, user=state["safe_message"])
-        return {"reply": reply or _fallback_reply(missing)}
+        return {"reply": reply or _fallback_reply(missing, progressed)}
 
     return _respond_node
 
@@ -80,8 +87,11 @@ def _make_refuse_node(config: AgentConfig):
 
 
 def _route(state: ConverseState) -> str:
-    # Sempre responde durante o slot-filling; recusa só off-topic sem contexto RAG e sem progresso de slot.
-    if state.get("sufficient") or state.get("progressed") or not state.get("missing"):
+    # Durante o slot-filling (faltam slots), SEMPRE pede o próximo — nunca recusa no meio da cotação.
+    if state.get("missing"):
+        return "respond"
+    # Slots completos: responde/confirma; recusa só off-topic sem contexto RAG nem progresso.
+    if state.get("sufficient") or state.get("progressed"):
         return "respond"
     return "refuse"
 
