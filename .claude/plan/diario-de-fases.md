@@ -381,3 +381,11 @@ decisões DEC-ORB-038..041.
 anti-IDOR→404, idempotência→efeito 1×, seq monotônico, `canonical_lead_id` estável na re-auth). **Smoke
 HTTP** na stack real (pool isolado): create **201** → turno **200** (seq 2) → retry **replay** (histórico 2,
 não duplica) → GET `[user, assistant]` → anti-IDOR **404** → sem token **401**. ✅
+
+**Revisão adversarial (5a.1):** workflow de 9 agentes (4 dimensões + verificação). **1 furo confirmado** (ao
+vivo no venv): `except OperationalError` **não** pega o `lock_timeout` do asyncpg — o SQLAlchemy o embrulha
+como `DBAPIError` **base** (não `OperationalError`), então um turno concorrente na mesma sessão retornaria
+**500** em vez do **409** prometido (DEC-ORB-040). Latente na 5a.1 (stub instantâneo), alcançável na 5a.2 sob
+o LLM. **Corrigido:** `concurrency_http_error` ramifica por `sqlstate` (`55P03`→409 `session_busy`;
+`57014`→503 `turn_timeout`; outro→propaga 500, não mascara `IntegrityError`) + teste de regressão. `pytest`
+**72** (41 unit + 31 integração). ✅

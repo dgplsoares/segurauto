@@ -9,7 +9,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.api.deps import require_session_chat
@@ -20,6 +20,18 @@ from app.shared.config import get_settings
 from app.shared.database import get_chat_session
 
 router = APIRouter(tags=["chat"])
+
+
+def concurrency_http_error(exc: DBAPIError) -> HTTPException | None:
+    """Mapeia os timeouts do pool do chat (DEC-ORB-040) para status retryable. O asyncpg embrulha
+    `lock_timeout`/`statement_timeout` como `DBAPIError` **base** (NÃO `OperationalError`), então ramificamos
+    pelo `sqlstate`; qualquer outro erro (ex.: `IntegrityError` inesperado) retorna None → propaga (500 visível)."""
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    if sqlstate == "55P03":  # lock_not_available (lock_timeout) — turno concorrente na mesma sessão
+        return HTTPException(status.HTTP_409_CONFLICT, detail="session_busy")
+    if sqlstate == "57014":  # query_canceled (statement_timeout)
+        return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="turn_timeout")
+    return None
 
 
 class CreateSessionIn(BaseModel):
@@ -83,10 +95,14 @@ async def post_turn(
     except SessionNotFound:
         await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # neutro (nunca 403)
-    except OperationalError:
-        # lock_timeout: turno concorrente na mesma sessão → falha rápido (DEC-ORB-040), sem prender conexão.
+    except DBAPIError as exc:
+        # lock/statement_timeout do pool do chat (DEC-ORB-040): turno concorrente na mesma sessão → falha
+        # rápido (409), sem prender conexão. Erro não-esperado propaga (500) — não mascara IntegrityError.
         await session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, detail="session_busy")
+        mapped = concurrency_http_error(exc)
+        if mapped is None:
+            raise
+        raise mapped
     return TurnOut(**result)
 
 
