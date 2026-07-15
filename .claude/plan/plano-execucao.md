@@ -57,7 +57,7 @@ Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de
 enriquecimento de **background** do lead (qualificar + sincronizar CRM/Ads), **invisível no chat**.
 
 - [x] **3a — RAG** ([`fase-3/3a-rag.md`](fase-3/3a-rag.md)): `RagService` + `vector_store` (pgvector + fallback keyword) + `EmbeddingsPort` + `IngestionService` + seed. *Verificado:* `ruff` + `pytest` 30/30; seed CLI idempotente; `vector(1536)` no pgvector. ✅
-- [ ] **3b — qualification_agent** ([`fase-3/3b-qualification-agent.md`](fase-3/3b-qualification-agent.md)): LangGraph (rubric→retrieve→assess→combine) + `ModelOrchestrator` + `AgentConfig` + `AiPort.qualify` + `POST /ai/qualify`. *Verif.:* resultado estruturado **determinístico** com stub.
+- [x] **3b — qualification_agent** ([`fase-3/3b-qualification-agent.md`](fase-3/3b-qualification-agent.md)): LangGraph (`score→[cond]→assess→combine`, sem RAG) + `ModelOrchestrator` + `AgentConfig` + `AiPort.qualify` + `POST /ai/qualify`. *Verificado:* `ruff` + `pytest` 34/34; docker `/ai/qualify` (100/hot, 20/cold). ✅
 - [ ] **3c — Worker** ([`fase-3/3c-worker.md`](fase-3/3c-worker.md)): **processo separado**, outbox `SKIP LOCKED` + `next_attempt_at` + dead-letter; qualify → encadeia CRM/Ads idempotentes. *Verif.:* **worker 2× → efeitos 1×**; concorrência (`asyncio.gather` mesma chave → 1 lead).
 
 > **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase (contexto fresco → antecipar gaps).

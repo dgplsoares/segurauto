@@ -121,3 +121,32 @@ Plano-mestre em `fase-3/`. Decisões DEC-ORB-022..033 formalizadas. Reanálise d
 - **Sem mudança de escopo.** Próxima: **3b** (qualification_agent LangGraph + ModelOrchestrator + `/ai/qualify`).
 
 **Verificado (3a):** `ruff` limpo + `pytest` **30/30** (unit + integração); seed CLI + idempotência; `vector_dims=1536`. ✅
+
+### Fase 3b — qualification_agent (LangGraph) + orquestrador
+
+**Reanálise (antes):**
+- **Descoberta que ajusta o plano:** a **qualificação NÃO precisa de RAG** — ela pontua os *atributos do
+  lead* (rubrica) + explicação opcional do LLM. O `retrieve_node` **sai** do grafo de qualificação (RAG
+  fica para o **support agent**, F4). Isso mantém `AiPort.qualify` **stateless** (sem sessão/DB).
+- **Grafo (LangGraph):** `rubric → [cond] → assess → combine`. A **aresta condicional** usa
+  `AgentConfig.use_llm_assess` (default **False** = rubrica-only determinístico; **True** em `provider=openai`).
+- **StubLLM no assess** quando `use_llm_assess=True` → caminho do LLM exercitado de forma determinística no CI.
+- **`ModelOrchestrator`:** `complete` com **timeout + retry/backoff** + `log_agent_turn`; degrada p/ `None`
+  em erro → o `combine` usa o `reason` da rubrica (nunca falha o grafo).
+- **`AgentConfig`** (dataclass + factory de `settings`) — seam da V2 (DEC-ORB-022).
+- **`/ai/qualify`** é **stateless** (sem DB) → testável em CI sem infra; `AiPort.qualify` delega ao grafo.
+- **Deps:** adicionar `langgraph`. **Riscos:** resolução de versão do langgraph; nós sync+async no mesmo grafo.
+
+**Descobertas (depois):**
+- **Gotcha do LangGraph (pego na verificação):** nome de nó **não pode colidir com chave de estado** —
+  o nó `rubric` colidia com a chave `rubric` do `QualState` → `ValueError` no `add_node`. **Fix:** nó
+  renomeado para `score`. (langgraph **0.3.34**, faixa `>=0.2.20,<0.4`.)
+- **Ajuste do plano confirmado:** qualificação **sem RAG** (nó `retrieve` removido) → `AiPort.qualify`
+  **stateless**. RAG fica para o support agent (F4).
+- **Grafo:** `score → [cond use_llm_assess] → assess(StubLLM) → combine`. Default rubrica-only
+  determinístico; `assess` exercitado com stub; **degrada** (LLM erro → `None` → combine usa rubric.reason).
+- **`/ai/qualify`** stateless verificado em CI e na stack Docker (100/hot e 20/cold).
+- **Sem outra mudança de escopo.** Próxima: **3c** (worker: processo separado, outbox `SKIP LOCKED` +
+  dead-letter; qualify → encadeia CRM/Ads idempotentes; contrato do CRM `status`/`source`).
+
+**Verificado (3b):** `ruff` limpo + `pytest` **34/34**; docker `POST /ai/qualify` (100/hot, 20/cold). ✅

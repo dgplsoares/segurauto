@@ -15,6 +15,28 @@ from starlette.responses import Response
 # Correlação: propagada in-process via contextvars; na V2 vem/segue por header.
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 
+# Logger dedicado ao caminho dos agentes (tokens/latência = custo — DEC-ORB-015/019).
+agent_logger = logging.getLogger("segurauto.agent")
+
+
+def log_agent_turn(
+    *,
+    agent: str,
+    model: str,
+    outcome: str,
+    latency_ms: float | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+) -> None:
+    """Log estruturado de um turno de agente (grep-able)."""
+    agent_logger.info(
+        "agent_turn agent=%s model=%s outcome=%s latency_ms=%s in_tokens=%s out_tokens=%s",
+        agent, model, outcome,
+        f"{latency_ms:.0f}" if latency_ms is not None else "-",
+        input_tokens if input_tokens is not None else "-",
+        output_tokens if output_tokens is not None else "-",
+    )
+
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s [rid=%(request_id)s] %(message)s"
 _factory_installed = False
 

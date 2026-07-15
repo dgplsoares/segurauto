@@ -7,7 +7,7 @@
 """
 from typing import Protocol, runtime_checkable
 
-from app.business.domain.qualification import QualificationResult, rubric_score
+from app.business.domain.qualification import QualificationResult
 
 
 @runtime_checkable
@@ -26,7 +26,8 @@ class AiPort(Protocol):
 
 
 class InProcessAiAdapter:
-    """Implementação in-process do `AiPort` (Fase 1 = placeholder determinístico via rubrica)."""
+    """Implementação in-process do `AiPort`. `qualify` delega ao grafo do contexto `ai` (o único
+    ponto onde `business` toca `ai` — na V2 vira client HTTP para `/ai/qualify`)."""
 
     async def qualify(
         self,
@@ -37,7 +38,9 @@ class InProcessAiAdapter:
         consent: bool,
         source: str | None,
     ) -> QualificationResult:
-        return rubric_score(
+        from app.ai.agents.qualification_agent import get_qualification_agent  # seam business→ai
+
+        return await get_qualification_agent().qualify(
             has_vehicle=has_vehicle,
             has_phone=has_phone,
             has_zipcode=has_zipcode,

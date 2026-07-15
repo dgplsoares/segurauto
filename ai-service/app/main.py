@@ -41,8 +41,10 @@ def create_app() -> FastAPI:
 
     app.include_router(leads_router)
 
-    # Contexto ai (montado na Fase 3):
-    # from app.ai.api.endpoints import router as ai_router; app.include_router(ai_router, prefix="/ai")
+    # Contexto ai — contrato stateless /ai/* (DEC-ORB-021)
+    from app.ai.api.qualify import router as ai_qualify_router
+
+    app.include_router(ai_qualify_router, prefix="/ai")
     return app
 
 
