@@ -74,3 +74,10 @@ def test_extract_short_yes_no_only_when_broker_is_expected():
     # sem esse contexto, um "não" não mexe em has_broker (evita falso-positivo).
     assert extract_slots_from_text("não") == {}
     assert extract_slots_from_text("não sei o CEP ainda", expected_slot="zipcode") == {}
+
+
+def test_extract_short_yes_no_rejects_ambiguous_and_uncertain():
+    # "sem dúvida" (afirmação) não pode virar has_broker=False; "não sei" é incerteza, não um "não".
+    assert extract_slots_from_text("sem dúvida", expected_slot="has_broker") == {}
+    assert extract_slots_from_text("não sei", expected_slot="has_broker") == {}
+    assert extract_slots_from_text("acho que sim", expected_slot="has_broker") == {}

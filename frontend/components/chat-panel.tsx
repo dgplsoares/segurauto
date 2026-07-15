@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Bot, UserRound, X } from "lucide-react";
+import { ArrowUp, Bot, RotateCw, UserRound, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "./ui/button";
 import { ChatBubble, TypingBubble, type ChatMessage } from "./chat-bubble";
@@ -13,6 +13,7 @@ import { brand } from "../content/site-content";
 
 let idSeq = 0;
 const nextId = () => `msg_${idSeq++}`;
+const DEFAULT_PROMPT = "Olá! Quero cotar meu seguro de auto.";
 
 export function ChatPanel() {
   const { step, initialPrompt, token, close } = useLeadFlow();
@@ -23,69 +24,86 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [handoff, setHandoff] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [failed, setFailed] = useState(false); // criação da sessão falhou → oferece "Tentar novamente"
   const scrollRef = useRef<HTMLDivElement>(null);
-  const startedRef = useRef(false);
   const sessionRef = useRef<string | null>(null);
+  const genRef = useRef(0); // geração: invalida continuações de aberturas anteriores (corrida abrir/fechar)
+  const lastPromptRef = useRef<string | null>(null);
 
-  // Ao abrir: cria a sessão de cotação e semeia com o prompt do hero como 1ª mensagem.
+  // A cada abertura (ou novo prompt do hero): continua a MESMA sessão (resume) ou cria uma nova.
   useEffect(() => {
-    if (open && !startedRef.current) {
-      startedRef.current = true;
-      void start();
-    }
-    if (!open) {
-      startedRef.current = false;
-      sessionRef.current = null;
-      setMessages([]);
-      setHandoff(false);
-      setQuote(null);
-      setInput("");
-    }
+    if (!open) return;
+    void onOpen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initialPrompt]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, typing, quote]);
 
-  const start = async () => {
-    const firstText = initialPrompt || "Olá! Quero cotar meu seguro de auto.";
-    setMessages([{ id: nextId(), role: "user", text: firstText }]);
-    setTyping(true);
-    try {
-      const { session_id } = await createChatSession(token ?? "");
-      sessionRef.current = session_id;
-      await respond(firstText, false);
-    } catch {
-      setMessages((m) => [
-        ...m,
-        { id: nextId(), role: "assistant", text: "Não consegui iniciar a conversa. Pode reabrir?" },
-      ]);
-      setTyping(false);
+  const onOpen = async () => {
+    const prompt = initialPrompt.trim();
+    if (!sessionRef.current) {
+      await startSession(prompt || DEFAULT_PROMPT);
+    } else if (prompt && prompt !== lastPromptRef.current) {
+      // Reabriu com um novo prompt → continua a conversa (mesma sessão).
+      lastPromptRef.current = prompt;
+      setMessages((m) => [...m, { id: nextId(), role: "user", text: prompt }]);
+      await sendTurnGuarded(prompt, genRef.current);
     }
   };
 
-  const respond = async (text: string, showTyping = true) => {
+  const startSession = async (prompt: string) => {
+    const gen = ++genRef.current; // nova geração: continuações antigas passam a ser ignoradas
+    lastPromptRef.current = prompt;
+    setFailed(false);
+    setMessages([{ id: nextId(), role: "user", text: prompt }]);
+    setTyping(true);
+    try {
+      const { session_id } = await createChatSession(token ?? "");
+      if (gen !== genRef.current) return; // superada por outra abertura
+      sessionRef.current = session_id;
+      await sendTurnGuarded(prompt, gen);
+    } catch {
+      if (gen !== genRef.current) return;
+      setTyping(false);
+      setFailed(true);
+    }
+  };
+
+  const sendTurnGuarded = async (text: string, gen: number) => {
     const sid = sessionRef.current;
     if (!sid) return;
-    if (showTyping) setTyping(true);
+    setTyping(true);
     try {
       const res = await sendTurn(sid, text, token ?? "");
+      if (gen !== genRef.current) return;
       setMessages((m) => [...m, { id: nextId(), role: "assistant", text: res.reply }]);
       if (res.quote) setQuote(res.quote);
       setHandoff(res.handoff_suggested);
+    } catch {
+      if (gen !== genRef.current) return;
+      setMessages((m) => [
+        ...m,
+        { id: nextId(), role: "assistant", text: "Tive um problema agora. Pode tentar enviar de novo?" },
+      ]);
     } finally {
-      setTyping(false);
+      if (gen === genRef.current) setTyping(false);
     }
   };
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || typing || !sessionRef.current) return;
+    if (!text || typing) return;
+    setInput("");
+    // Sem sessão (ex.: a criação falhou antes) → (re)cria a conversa a partir desta mensagem.
+    if (!sessionRef.current) {
+      await startSession(text);
+      return;
+    }
     track("chat_message", { length: text.length });
     setMessages((m) => [...m, { id: nextId(), role: "user", text }]);
-    setInput("");
-    await respond(text);
+    await sendTurnGuarded(text, genRef.current);
   };
 
   return (
@@ -136,6 +154,19 @@ export function ChatPanel() {
               {typing && <TypingBubble />}
 
               {quote && !typing && <QuoteCard quote={quote} />}
+
+              {failed && !typing && (
+                <div className="flex flex-col items-start gap-2 pl-10">
+                  <p className="text-sm text-muted-foreground">Não consegui iniciar a conversa agora.</p>
+                  <Button
+                    size="sm"
+                    onClick={() => void startSession(lastPromptRef.current ?? DEFAULT_PROMPT)}
+                    className="rounded-full bg-accent text-accent-foreground hover:brightness-105"
+                  >
+                    <RotateCw className="size-4" /> Tentar novamente
+                  </Button>
+                </div>
+              )}
 
               {handoff && !typing && (
                 <div className="flex flex-wrap gap-2 pl-10">

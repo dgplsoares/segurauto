@@ -25,8 +25,9 @@ _BROKER_CODE_RE = re.compile(
     r"(?i)c[óo]digo(?!\s+postal|\s+de\s+barras|\s+de\s+[áa]rea)[^A-Za-z0-9]{0,4}([A-Za-z0-9]{3,20})"
 )
 # Resposta CURTA (sim/não) — só interpretada quando a pergunta do corretor acabou de ser feita (contexto).
-_YES_RE = re.compile(r"(?i)^\s*(sim|tenho|claro|com certeza|possuo|positivo|afirmativo)\b")
-_NO_RE = re.compile(r"(?i)^\s*(n[ãa]o|nao|nunca|negativo|sem)\b")
+_YES_RE = re.compile(r"(?i)^\s*(sim|tenho|possuo|claro|positivo|afirmativo)\b")
+_NO_RE = re.compile(r"(?i)^\s*(n[ãa]o|nao|nunca|negativo)\b")  # "sem" só vale no _NO_BROKER_RE (com "corretor")
+_UNCERTAIN_RE = re.compile(r"(?i)^\s*(n[ãa]o\s+sei|n[ãa]o\s+entendi|n[ãa]o\s+lembro|talvez|acho\s+que)")
 
 
 def _clean(value: str, maxlen: int) -> str:
@@ -84,8 +85,8 @@ def extract_slots_from_text(text: str, expected_slot: str | None = None) -> dict
         found["has_broker"] = False
     elif _HAS_BROKER_RE.search(text):
         found["has_broker"] = True
-    elif expected_slot == "has_broker":
-        # A pergunta do corretor foi feita agora → aceita resposta curta "sim/não".
+    elif expected_slot == "has_broker" and len(text.split()) <= 3 and not _UNCERTAIN_RE.match(text):
+        # Resposta CURTA e não-ambígua à pergunta do corretor (evita "sem dúvida", "não sei o CEP"…).
         if _NO_RE.match(text):
             found["has_broker"] = False
         elif _YES_RE.match(text):

@@ -363,11 +363,3 @@ export const story = {
   text: "Não criamos a SegurAuto porque amávamos seguros. Muito pelo contrário: queríamos mudar como o setor trata as pessoas. Simples assim.",
   cta: "Leia nossa história",
 };
-
-// Mensagens canned do consultor de IA (mock).
-export const consultantReplies = {
-  greeting:
-    "Olá! Sou o consultor de IA da SegurAuto. 🚗 Vou te ajudar a proteger o seu carro. Já anotei a sua mensagem — me conta rapidinho: qual é a marca, o modelo e o ano do veículo?",
-  fallback:
-    "Entendi! Para te dar a melhor cotação, preciso confirmar alguns detalhes do veículo e do seu perfil de uso. Podemos seguir por aqui mesmo. 😊",
-};

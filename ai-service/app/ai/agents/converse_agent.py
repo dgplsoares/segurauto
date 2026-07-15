@@ -79,34 +79,18 @@ def _make_respond_node(orchestrator: ModelOrchestrator, config: AgentConfig):
     return _respond_node
 
 
-def _make_refuse_node(config: AgentConfig):
-    def _refuse_node(state: ConverseState) -> dict:  # noqa: ARG001 — não usa o state
-        return {"reply": config.rejection_message, "handoff_suggested": True}
-
-    return _refuse_node
-
-
-def _route(state: ConverseState) -> str:
-    # Durante o slot-filling (faltam slots), SEMPRE pede o próximo — nunca recusa no meio da cotação.
-    if state.get("missing"):
-        return "respond"
-    # Slots completos: responde/confirma; recusa só off-topic sem contexto RAG nem progresso.
-    if state.get("sufficient") or state.get("progressed"):
-        return "respond"
-    return "refuse"
-
-
 def _build_graph(orchestrator: ModelOrchestrator, config: AgentConfig):
     graph = StateGraph(ConverseState)
     graph.add_node("guard_in", _guard_in_node)
     graph.add_node("retrieve", _retrieve_node)
     graph.add_node("respond", _make_respond_node(orchestrator, config))
-    graph.add_node("refuse", _make_refuse_node(config))
     graph.set_entry_point("guard_in")
     graph.add_edge("guard_in", "retrieve")
-    graph.add_conditional_edges("retrieve", _route, {"respond": "respond", "refuse": "refuse"})
+    # O consultor de cotação SEMPRE responde (pede o próximo slot / responde FAQ / confirma) — nunca recusa:
+    # recusar follow-ups on-topic (ex.: "é mensal ou anual?" pós-cotação) seria péssimo p/ um bot de vendas.
+    # O handoff (guard_in → handoff_suggested) segue disponível para intenção comercial/humana.
+    graph.add_edge("retrieve", "respond")
     graph.add_edge("respond", END)
-    graph.add_edge("refuse", END)
     return graph.compile()
 
 

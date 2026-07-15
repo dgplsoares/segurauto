@@ -526,3 +526,24 @@ First Load JS), 4 route handlers dinâmicos. **Smoke:** LP renderiza (`GET /` 20
 `next build` (route table com os 2 novos handlers). **Smoke multi-turn via BFF do frontend:** turno 1 pede a
 placa → turno 2 "Anotado!" + pede placa → turno 3 completa → **"preparei a sua cotação 🚗" + card** (R$
 1.200/ano, 5 coberturas, `pdf_ref`). ✅
+
+**Ajuste do smoke visual:** extração de slot **sensível ao contexto** (commit 3697bb5) — um "sim/não" curto
+respondendo à pergunta do corretor passa a ser entendido (antes exigia a palavra "corretor").
+
+**Revisão adversarial (5c):** workflow de 17 agentes (4 dimensões + verificação). **10 confirmados** (13
+total; 3 refutados) — nenhum crítico, o grosso em robustez do chat-panel. Corrigidos:
+- **chat-panel (#1-5):** falha ao criar sessão não vira mais beco (retry + (re)cria ao digitar); falha no
+  meio da conversa mostra **bolha de erro** (antes: rejection não tratada); **guarda de geração** (`genRef`)
+  invalida continuações de aberturas anteriores (corrida abrir/fechar); **resume** — não reseta ao fechar,
+  reabrir com novo prompt continua a mesma sessão (mantém a cotação).
+- **slots (#6):** "sim/não" curto restrito a resposta curta e não-ambígua (guarda de tamanho +
+  `_UNCERTAIN_RE`; removido "sem" do `_NO_RE`) → "sem dúvida"/"não sei" não viram mais `has_broker=False`.
+- **converse_agent (#8):** o consultor de cotação **sempre responde** (removidos `refuse`/`_route`) — não
+  recusa mais follow-ups on-topic pós-cotação. Handoff segue disponível.
+- **limpeza:** removido export mock morto `consultantReplies` (#9); **UTM por submissão** (não por sessão),
+  alinhando com a decisão do plano (#10).
+- **#7 documentado** (não corrigido): `expected = missing_slots[0]` assume a ordem do stub; um LLM real fora
+  de ordem poderia perder o "sim/não" curto — refino futuro (`asked_slot`).
+
+**Verificado (revisão 5c):** `ruff` + `pytest` **96** (56 unit + 40 integração) + `next build` + smoke
+multi-turn (placa → CEP → "não" → **card**; follow-up "é mensal ou anual?" **não recusa**). ✅
