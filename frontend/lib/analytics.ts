@@ -11,7 +11,8 @@ export type AnalyticsEvent =
   | "signup_submit"
   | "otp_view"
   | "otp_verified"
-  | "chat_message";
+  | "chat_message"
+  | "quote_confirm";
 
 export function track(event: AnalyticsEvent, payload?: Record<string, unknown>) {
   // TODO(integração): enviar para o provedor de analytics real.

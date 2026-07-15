@@ -99,17 +99,22 @@ no CRM → card/PDF).
 - **Verificado:** `ruff` + `pytest` **96** (56 unit + 40 integração) + `next build`; 3 revisões adversariais
   (5a.2/5b/5c) + smoke real multi-turn (slots → **card R$ 1.200,00**; isolamento de sessão; guardrail nas tools). ✅
 
-## Fase 6 — Personalização + Ações + Click_ID  ·  V1.5
-Meta: personalizar a cotação e disparar ações via outbox.
+## Fase 6 (núcleo) — Ações + Handoff + Click_ID  ·  V1.5  ·  concluída
+Meta: fechar o lado **write** — confirmação explícita → ações via outbox. Decisões em DEC-ORB-045; detalhes
+em `diario-de-fases.md`. **Escopo:** núcleo focado (re-cotação/coberturas adiadas — mais perto de V2).
 
-- [ ] Personalização/re-cotação (seleção de coberturas) — marketplace multi-seguradora = V2
-- [ ] Ações **write-through-outbox**: `crm_update` / `notify` (email/WhatsApp/SMS via `NotificationPort` fake) / `conversion` — só após **confirmação explícita**, idempotentes por `event_id=(session,tipo,turno)`
+- [ ] Personalização/re-cotação (seleção de coberturas) — **adiado** (mais perto do marketplace = V2)
+- [x] Ações **write-through-outbox**: `notify` (email/WhatsApp/SMS via `NotificationPort`) / `conversion` /
+  `crm_update` — só após **confirmação explícita** (botão no card, `POST .../confirm`), **idempotentes** por
+  marca na sessão sob `FOR UPDATE` (2ª = `already_requested`, efeito 1×); `contract` exige cotação (409).
 - [x] **Audit de integração** (habilita a jornada da DEC-ORB-042) — **antecipado na F5b** (DEC-ORB-044):
   tabela append-only `integration_events` (`lead_id`/`session_id`/tipo/payloads) já grava o request/response
   real de `crm_sync`/`ads_conversion`/`crm_price_quote`/`notify_otp` (o OTP nunca registra o código).
-- [ ] **Handoff humano**: detectar + flag ortogonal + mensagem honesta + intent na outbox (handler fake)
-- [ ] Atribuição por **Click_ID**: capturar gclid/fbclid na LP → persistir no lead → enviar na conversão
-- **Verificar:** ação 2× → efeito 1×; conversão com `click_id` deduplicada.
+- [x] **Handoff humano**: flag ortogonal + mensagem honesta + intent `HANDOFF` na outbox (handler fake).
+- [x] Atribuição por **Click_ID**: gclid/fbclid capturado na LP (sanitizado) → `leads.click_id` → enviado na
+  conversão de contrato.
+- **Verificado:** `ruff` + `pytest` **116** (+10 F6) + `next build` + smoke E2E (contrato 2× → efeito 1×;
+  jornada com `ads_conversion(contract_intent, click_id)` + `crm_update` + `notify_contract`; sem PII; 0 dead-letters). ✅
 
 ## Fase 7 — CI + verificação Docker + entrega
 Meta: gate automatizado e stack reprodutível do zero.

@@ -15,3 +15,10 @@ const CAMPAIGNS: UtmCampaign[] = [
 export function pickCampaign(): UtmCampaign {
   return CAMPAIGNS[Math.floor(Math.random() * CAMPAIGNS.length)];
 }
+
+/** Click ID de campanha na URL da LP (gclid=Google, fbclid=Meta). `undefined` fora do navegador/sem param. */
+export function readClickId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("gclid") ?? params.get("fbclid") ?? undefined;
+}

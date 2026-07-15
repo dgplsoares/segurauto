@@ -45,6 +45,14 @@ class FakeCrm:
         }
         return CrmSyncResult(external_id=f"crm_{lead_id[:8]}", created=not existed)
 
+    async def update_signal(self, *, lead_id: str, signal: str) -> dict:
+        """Envia um SINAL ao CRM (ex.: 'contract_requested') — o funil é do CRM, não nosso (DEC-ORB-034).
+        Fake determinístico: registra e devolve o external_id + status."""
+        self.calls += 1
+        entry = self._store.setdefault(lead_id, {"lead_id": lead_id})
+        entry["signal"] = signal
+        return {"external_id": f"crm_{lead_id[:8]}", "status": "updated", "signal": signal}
+
     async def price_quote(self, *, vehicle: str, zipcode: str, broker_code: str | None = None) -> dict:
         """Tabela de preços fake, determinística por região (1º dígito do CEP). Desconto de 10% só para
         corretor **autorizado** (autorização server-side do `broker_code` — fecha o E6)."""

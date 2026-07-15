@@ -49,6 +49,7 @@ class Lead:
     zipcode: str
     consent: bool
     source: str | None = None
+    click_id: str | None = None  # gclid/fbclid capturado na LP (F6) — atribuição de campanha
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: LeadStatus = LeadStatus.RECEIVED
     score: int | None = None

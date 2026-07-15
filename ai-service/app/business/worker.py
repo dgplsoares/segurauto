@@ -5,6 +5,7 @@ in-process (dev/testes). Claim por `FOR UPDATE SKIP LOCKED` (não é exactly-onc
 retry/backoff persistente (`next_attempt_at`) + dead-letter.
 """
 import asyncio
+import json
 import logging
 import random
 import signal
@@ -15,8 +16,9 @@ from sqlalchemy import func, or_, select
 
 from app.business.adapters.ads import FakeGoogleAds, FakeMetaAds
 from app.business.adapters.crm import FakeCrm
+from app.business.adapters.notification import get_notification, reset_notifications
 from app.business.ai_port import InProcessAiAdapter
-from app.business.domain.events import IntentType, conversion_event_id
+from app.business.domain.events import IntentType, action_event_id, conversion_event_id
 from app.business.repository.integration_events import record_integration_event
 from app.business.repository.lead_repository import LeadRepository
 from app.business.repository.models import LeadRow, OutboxRow
@@ -52,6 +54,12 @@ def reset_adapters() -> None:
     _crm.cache_clear()
     _ads_meta.cache_clear()
     _ads_google.cache_clear()
+    reset_notifications()
+
+
+def _payload(row: OutboxRow) -> dict:
+    """Payload JSON da intent (F6 carrega session_id/channels); vazio para as intents da fatia vertical."""
+    return json.loads(row.payload) if row.payload else {}
 
 
 async def _claim_one(session) -> OutboxRow | None:
@@ -122,6 +130,58 @@ async def _handle(session, row: OutboxRow) -> None:
             session, event_type="ads_conversion", lead_id=lead.id, request_id=row.request_id,
             request={"platform": "google", "event_id": res.event_id}, response={"deduped": res.deduped},
         )
+
+    # F6 — ações da confirmação de contrato (DEC-ORB-045). Idempotência ads pelo event_id de AÇÃO
+    # (distinto do de qualify); demais fakes são determinísticos e sem efeito real → reprocesso é inócuo.
+    elif intent == IntentType.CONVERSION.value:
+        sid = _payload(row).get("session_id")
+        for ads, platform in ((_ads_meta(), "meta"), (_ads_google(), "google")):
+            res = await ads.send_conversion(
+                event_id=action_event_id(sid or lead.id, "contract", platform), lead_id=lead.id
+            )
+            await record_integration_event(
+                session, event_type="ads_conversion", lead_id=lead.id, session_id=sid, request_id=row.request_id,
+                request={"platform": platform, "event": "contract_intent", "event_id": res.event_id,
+                         "click_id": lead.click_id},
+                response={"deduped": res.deduped},
+            )
+        logger.info("action_conversion lead_id=%s session=%s has_click_id=%s", lead.id, sid, bool(lead.click_id))
+
+    elif intent == IntentType.CRM_UPDATE.value:
+        sid = _payload(row).get("session_id")
+        res = await _crm().update_signal(lead_id=lead.id, signal="contract_requested")
+        await record_integration_event(
+            session, event_type="crm_update", lead_id=lead.id, session_id=sid, request_id=row.request_id,
+            request={"lead_id": lead.id, "signal": "contract_requested"},
+            response={"external_id": res["external_id"], "status": res["status"]},
+        )
+        logger.info("crm_update lead_id=%s signal=contract_requested", lead.id)
+
+    elif intent == IntentType.NOTIFY.value:
+        data = _payload(row)
+        sid, channels = data.get("session_id"), data.get("channels", ["email"])
+        sent = []
+        for ch in channels:
+            to = lead.email if ch == "email" else lead.phone  # destino por canal; nunca logado cru
+            mid = await get_notification().notify(
+                channel=ch, to=to, template="quote_confirmation", context={"vehicle": lead.vehicle}
+            )
+            sent.append({"channel": ch, "message_id": mid})
+        # Audit sem PII: canais + template no request; ids fake (hash, não reversível) no response.
+        await record_integration_event(
+            session, event_type="notify_contract", lead_id=lead.id, session_id=sid, request_id=row.request_id,
+            request={"channels": channels, "template": "quote_confirmation"}, response={"sent": sent},
+        )
+        logger.info("notify_contract lead_id=%s channels=%s", lead.id, ",".join(channels))
+
+    elif intent == IntentType.HANDOFF.value:
+        sid = _payload(row).get("session_id")
+        await record_integration_event(
+            session, event_type="handoff", lead_id=lead.id, session_id=sid, request_id=row.request_id,
+            request={"lead_id": lead.id, "reason": "customer_requested"},
+            response={"queue": "brokers", "ticket": f"hd_{(sid or lead.id)[:8]}"},
+        )
+        logger.info("handoff_requested lead_id=%s session=%s", lead.id, sid)
 
     else:
         raise RuntimeError(f"intent desconhecido: {intent}")

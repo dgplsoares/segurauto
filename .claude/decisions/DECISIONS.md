@@ -364,3 +364,22 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
   `quote_tool`: `crm_price_quote`; OTP: `notify_otp`) logo após o fake — sem acoplar os adapters ao banco.
   Cobre também `price_quote`/OTP (fora do outbox). PII mascarada; o **OTP nunca registra o código**.
 - **Trade-off:** +1 tabela e uma escrita por troca, em troca de uma jornada completa e auditável.
+
+### DEC-ORB-045 — F6: confirmação explícita → ações write-through-outbox
+- **Contexto:** com a cotação no card (F5b), falta o lado **"write"**: o lead confirma a intenção e a app
+  dispara ações externas (conversão, notificação, sinal ao CRM) + handoff, além da atribuição por Click_ID.
+- **Escolha:** **confirmação explícita por botão no card** (`POST /support/sessions/{id}/confirm`
+  `action=contract|handoff`) — nunca inferida de mensagem ambígua. `contract` enfileira **NOTIFY + CONVERSION
+  + CRM_UPDATE**; `handoff` enfileira **HANDOFF**. Tudo **write-through-outbox** (mesmo padrão da fatia
+  vertical): o worker roda os fakes at-least-once e grava em `integration_events`. **Idempotência** por uma
+  marca na sessão (`contract_requested_at`/`handoff_requested_at`) sob `FOR UPDATE` (lock + anti-IDOR) → 2ª
+  confirmação = replay (`already_requested`), **efeito 1×**; a conversão de ação usa `action_event_id`
+  (por sessão, distinto do `conversion_event_id` de qualify → não deduplicam entre si). `contract` **exige
+  cotação** (409 `quote_required`). **Canais:** email + WhatsApp + SMS (fakes via `NotificationPort.notify`;
+  destino nunca logado cru, audit **sem PII** — só canais + ids fake). **Click_ID:** gclid/fbclid capturado
+  na URL da LP → **sanitizado** (charset seguro) → `leads.click_id` → enviado na conversão de contrato.
+  **Fronteira "não é CRM" (DEC-ORB-034):** `crm_update` é só um **sinal** ao CRM; o funil é do CRM.
+- **Escopo:** **núcleo focado** — re-cotação/seleção de coberturas fica para depois (mais perto do
+  marketplace = V2). O handoff reusa a flag ortogonal existente + intent na outbox (handler fake).
+- **Trade-off:** confirmação por botão (explícita/testável) em vez de NLU; ações fakes idempotentes que
+  espelham o contrato real (o adapter real entra por `.env`, sem tocar no domínio).

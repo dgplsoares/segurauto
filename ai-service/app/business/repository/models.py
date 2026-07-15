@@ -37,6 +37,7 @@ class LeadRow(Base):
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     band: Mapped[str | None] = mapped_column(String(20), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    click_id: Mapped[str | None] = mapped_column(String(120), nullable=True)  # gclid/fbclid da LP (F6)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -117,6 +118,7 @@ class ChatSessionRow(Base):
     quote_ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     handoff_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     handoff_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contract_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # F6
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_turn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

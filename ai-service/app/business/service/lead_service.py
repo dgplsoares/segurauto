@@ -48,6 +48,7 @@ class LeadService:
         zipcode: str,
         consent: bool,
         source: str | None,
+        click_id: str | None = None,
         request_id: str | None = None,
     ) -> tuple[LeadRow | None, str]:
         """Retorna (lead, kind) — kind ∈ {created, dedup, conflict}. Não commita."""
@@ -58,7 +59,7 @@ class LeadService:
 
         lead = Lead(
             idempotency_key=idempotency_key, name=name, email=norm_email, phone=phone,
-            vehicle=vehicle, zipcode=zipcode, consent=consent, source=source,
+            vehicle=vehicle, zipcode=zipcode, consent=consent, source=source, click_id=click_id,
         )
         row = await self.repo.add_lead(lead)
         await self.repo.enqueue(lead_id=lead.id, intent_type=IntentType.QUALIFY, request_id=request_id)

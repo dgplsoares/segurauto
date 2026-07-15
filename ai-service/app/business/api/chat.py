@@ -6,6 +6,7 @@ neutro** (nunca 403); `session_id` do path como `str` (não 422). Pool ISOLADO d
 F5a.1 a resposta do turno é um stub — o `ConverseAgent` entra na F5a.2.
 """
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -16,9 +17,11 @@ from app.business.api.deps import require_session_chat
 from app.business.domain.slots import missing_slots, validate_slots
 from app.business.repository.chat_repository import ChatRepository
 from app.business.service.chat_service import ChatService, SessionNotFound
+from app.business.service.confirm_service import ConfirmService, QuoteRequired
 from app.business.service.quote_service import QuoteService, quote_public
 from app.shared.config import get_settings
 from app.shared.database import get_chat_session
+from app.shared.observability import request_id_ctx
 
 router = APIRouter(tags=["chat"])
 
@@ -75,6 +78,17 @@ class MessageOut(BaseModel):
     seq: int
     role: str
     content: str
+
+
+class ConfirmIn(BaseModel):
+    action: Literal["contract", "handoff"]
+
+
+class ConfirmOut(BaseModel):
+    session_id: str
+    action: str
+    status: str   # queued | already_requested (idempotente)
+    message: str
 
 
 @router.post("/support/sessions", response_model=CreateSessionOut, status_code=status.HTTP_201_CREATED)
@@ -142,3 +156,34 @@ async def get_quote(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # ainda sem cotação
     return QuoteOut(**quote_public(row))
+
+
+@router.post("/support/sessions/{session_id}/confirm", response_model=ConfirmOut)
+async def confirm_action(
+    session_id: str,
+    payload: ConfirmIn,
+    lead_id: str = Depends(require_session_chat),
+    session: AsyncSession = Depends(get_chat_session),
+) -> ConfirmOut:
+    """Confirmação explícita → ações write-through-outbox (DEC-ORB-045). Idempotente (2ª chamada = replay);
+    gate de posse anti-IDOR (404 neutro); `contract` sem cotação → 409."""
+    svc = ConfirmService(ChatRepository(session))
+    try:
+        result = await svc.confirm(
+            session_id=session_id, lead_id=lead_id, action=payload.action,
+            request_id=request_id_ctx.get(),
+        )
+        await session.commit()
+    except SessionNotFound:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not_found")  # neutro (nunca 403)
+    except QuoteRequired:
+        await session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="quote_required")
+    except DBAPIError as exc:
+        await session.rollback()
+        mapped = concurrency_http_error(exc)  # confirmação concorrente na mesma sessão → 409 session_busy
+        if mapped is None:
+            raise
+        raise mapped
+    return ConfirmOut(**result)

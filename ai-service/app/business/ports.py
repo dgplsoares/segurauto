@@ -29,6 +29,8 @@ class CrmPort(Protocol):
 
     async def price_quote(self, *, vehicle: str, zipcode: str, broker_code: str | None = None) -> dict: ...
 
+    async def update_signal(self, *, lead_id: str, signal: str) -> dict: ...
+
 
 @dataclass(frozen=True)
 class ConversionResult:
@@ -50,3 +52,5 @@ class NotificationPort(Protocol):
     """Envio de notificações (OTP na V1; email/WhatsApp/SMS na F6). Fake default / real pós-V1."""
 
     async def send_otp(self, *, email: str, code: str) -> None: ...
+
+    async def notify(self, *, channel: str, to: str, template: str, context: dict | None = None) -> str: ...

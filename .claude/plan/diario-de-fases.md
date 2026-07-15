@@ -590,3 +590,27 @@ acidente em torno das invariantes centrais); corrigidos:
   confirma: sem o escape, o `<img` cru apareceria e o assert falharia.
 
 **Verificado (revisão):** `ruff` + `pytest` **106** (58 unit + 48 integração). ✅
+
+---
+
+## Fase 6 (núcleo) — Confirmação → ações write-through-outbox + Click_ID (DEC-ORB-045)
+
+**Decisões (AskUserQuestion):** núcleo focado (re-cotação/coberturas fica p/ V2); confirmação por **botão no
+card**; canais **email + WhatsApp + SMS** (fakes).
+
+**Backend:** novos `IntentType` (NOTIFY/CONVERSION/CRM_UPDATE/HANDOFF) + `action_event_id` (por sessão,
+distinto do `conversion_event_id` de qualify). Migration 0007 (`chat_sessions.contract_requested_at` +
+`leads.click_id`). `NotificationPort.notify` multi-canal (destino mascarado, id fake determinístico) +
+`CrmPort.update_signal`. `ConfirmService` + `POST /support/sessions/{id}/confirm` (`action=contract|handoff`):
+gate de posse sob `FOR UPDATE`, **idempotente** por marca na sessão (2ª = `already_requested`, efeito 1×),
+`contract` exige cotação (409). Handlers no worker gravam `integration_events` (audit **sem PII**: só canais
++ ids no notify). `click_id` sanitizado no schema → propagado na conversão de contrato.
+
+**Frontend:** `QuoteCard` com **"Quero contratar"** / **"Falar com um corretor"** → `confirmAction` (BFF
+`/api/support/sessions/[id]/confirm`) → mostra a mensagem honesta do backend; captura `gclid`/`fbclid` da URL
+(`readClickId`) enviada no `createLead`.
+
+**Verificado:** `ruff` + `pytest` **116** (58 unit + 58 integração; +10 da F6) + `next build`. **Smoke E2E
+real** (via BFF do frontend + worker container): contrato → `queued` → 2ª = `already_requested`; a jornada
+mostra `ads_conversion×2 (contract_intent, click_id=gclid_SMOKE123) + crm_update + notify_contract [email,
+whatsapp,sms]`, **sem PII**, todas as intents `done`, **zero dead-letters**. ✅

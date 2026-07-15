@@ -9,7 +9,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { createLead, requestOtp, verifyOtp, type LeadPayload } from "./api";
 import { track } from "./analytics";
-import { pickCampaign } from "./utm";
+import { pickCampaign, readClickId } from "./utm";
 
 export type FlowStep = "idle" | "presignup" | "otp" | "chat";
 export type FlowMode = "signup" | "login";
@@ -44,6 +44,8 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
   const [initialPrompt, setInitialPrompt] = useState("");
   const [email, setEmail] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  // Click ID de campanha (gclid/fbclid) lido da URL uma vez no load da LP (F6) — atribuição de conversão.
+  const [clickId] = useState<string | undefined>(() => readClickId());
 
   const value = useMemo<LeadFlowContextValue>(() => {
     return {
@@ -76,8 +78,8 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
       async submitLead(data) {
         const campaign = pickCampaign(); // sorteio de UTM POR SUBMISSÃO (F5c.2)
         track("signup_submit", { campaign: campaign.campaign });
-        // `source` = plataforma do UTM sorteado (meta|google) — atribuição de campanha.
-        await createLead({ ...data, zipcode: "00000-000", source: campaign.platform });
+        // `source` = plataforma do UTM sorteado (meta|google); `click_id` = gclid/fbclid da URL (F6).
+        await createLead({ ...data, zipcode: "00000-000", source: campaign.platform, click_id: clickId });
         setEmail(data.email);
         await requestOtp(data.email);
         track("otp_view", { mode: "signup" });
@@ -104,7 +106,7 @@ export function LeadFlowProvider({ children }: { children: ReactNode }) {
         setStep("idle");
       },
     };
-  }, [step, mode, initialPrompt, email, token]);
+  }, [step, mode, initialPrompt, email, token, clickId]);
 
   return <LeadFlowContext.Provider value={value}>{children}</LeadFlowContext.Provider>;
 }

@@ -33,6 +33,7 @@ class LeadRepository:
             zipcode=lead.zipcode,
             consent=lead.consent,
             source=lead.source,
+            click_id=lead.click_id,
             status=lead.status.value,
             score=lead.score,
             band=lead.band.value if lead.band else None,

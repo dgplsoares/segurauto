@@ -153,7 +153,9 @@ export function ChatPanel() {
               ))}
               {typing && <TypingBubble />}
 
-              {quote && !typing && <QuoteCard quote={quote} />}
+              {quote && !typing && (
+                <QuoteCard quote={quote} sessionId={sessionRef.current ?? undefined} token={token ?? undefined} />
+              )}
 
               {failed && !typing && (
                 <div className="flex flex-col items-start gap-2 pl-10">

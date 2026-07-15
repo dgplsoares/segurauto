@@ -40,6 +40,7 @@ async def create_lead(
             zipcode=payload.zipcode,
             consent=payload.consent,
             source=payload.source,
+            click_id=payload.click_id,
             request_id=request_id,
         )
         await session.commit()

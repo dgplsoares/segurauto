@@ -13,6 +13,7 @@ export interface LeadPayload {
   zipcode: string; // coletado na conversa; enviado provisório pelo modal
   consent: boolean;
   source?: string; // atribuição de campanha/UTM
+  click_id?: string; // gclid/fbclid capturado da URL da LP (F6)
 }
 
 export interface LeadResult {
@@ -130,4 +131,30 @@ export async function sendTurn(sessionId: string, message: string, token: string
   });
   if (!res.ok) throw new ApiError(res.status, "Falha ao enviar a mensagem.");
   return (await res.json()) as TurnResult;
+}
+
+// --- Confirmação → ações write-through-outbox (F6) --------------------------
+
+export type ConfirmAction = "contract" | "handoff";
+
+export interface ConfirmResult {
+  session_id: string;
+  action: ConfirmAction;
+  status: "queued" | "already_requested"; // idempotente
+  message: string;
+}
+
+/** POST /api/support/sessions/{id}/confirm — dispara as ações (contratar/handoff). Idempotente. */
+export async function confirmAction(
+  sessionId: string,
+  action: ConfirmAction,
+  token: string,
+): Promise<ConfirmResult> {
+  const res = await fetch(`/api/support/sessions/${encodeURIComponent(sessionId)}/confirm`, {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new ApiError(res.status, "Não foi possível concluir agora.");
+  return (await res.json()) as ConfirmResult;
 }
