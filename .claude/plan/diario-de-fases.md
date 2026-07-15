@@ -14,4 +14,19 @@
 - Riscos priorizados: fricção de pgvector no Docker (validar cedo) e não-determinismo do LLM no CI (stub default).
 
 **Descobertas (depois):**
-- _(a preencher ao concluir a Fase 0)_
+- **Engine de banco preguiçoso (lazy):** para o `/health` de liveness responder mesmo com o banco
+  fora, a engine só é criada na primeira necessidade (readiness/queries). Alinha com DEC-ORB-016.
+- **Verificação dupla:** venv local (`ruff` limpo + `pytest` 2/2, sem infra) **e** `docker compose up`
+  real (db `pgvector:pg16` healthy; `/health`→200; `/health/ready`→200 `db:true`; header
+  `X-Request-Id`). O `depends_on: service_healthy` segurou o ai-service corretamente.
+- **Log de startup** sai com `rid=-` (sem contexto de request) — esperado; o `request_id` só existe
+  dentro de uma requisição.
+- **Nit inócuo:** `PendingDeprecationWarning` de `python-multipart` (via starlette). O multipart entra
+  de fato na Fase 2 (formulário) — tratar o import então.
+- **Sem mudança de escopo.** Fase 0 fechada; próxima é a Fase 1 (domínio + ports/adapters + outbox + AiPort).
+
+---
+
+## Fase 1 — Contextos + ports/adapters + persistência + outbox
+
+**Reanálise (antes):** _(a preencher ao iniciar a Fase 1)_

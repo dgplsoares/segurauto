@@ -23,13 +23,13 @@ ai-service/app/
 ## Fase 0 — Scaffold + protocolo + infra base  ·  ~0.6h
 Meta: repo navegável, processo versionado, infra de pé e observabilidade base.
 
-- [ ] `.claude/` completo (protocolo, DECISIONS, análise, plano, diário, arquitetura visual da LP, roadmap V2)
-- [ ] Árvore do monorepo (`frontend/`, `ai-service/`) + `docker-compose.yml` (postgres+pgvector, ai-service, frontend) + `.env.example`
-- [ ] Compose resiliente: **volume nomeado + healthcheck + `depends_on: service_healthy` + `restart: unless-stopped`**
-- [ ] `ai-service`: FastAPI mínimo com `/health` + `/health/ready`; `shared/config` (pydantic settings) escolhendo fake/real; esqueleto dos contextos `shared/`, `business/`, `ai/`
-- [ ] Observabilidade base: `configure_logging()` + middleware de `request_id` (contextvars)
-- [ ] Engram: `mem_session_start` + save das decisões-semente
-- **Verificar:** `docker compose up` sobe Postgres+pgvector e `/health` responde 200. Sem lógica ainda.
+- [x] `.claude/` completo (protocolo, DECISIONS, análise, plano, diário, arquitetura visual da LP, roadmap V2)
+- [x] Árvore do monorepo (`frontend/`, `ai-service/`) + `docker-compose.yml` (postgres+pgvector, ai-service, frontend) + `.env.example`
+- [x] Compose resiliente: **volume nomeado + healthcheck + `depends_on: service_healthy` + `restart: unless-stopped`**
+- [x] `ai-service`: FastAPI mínimo com `/health` + `/health/ready`; `shared/config` (pydantic settings) escolhendo fake/real; esqueleto dos contextos `shared/`, `business/`, `ai/`
+- [x] Observabilidade base: `configure_logging()` + middleware de `request_id` (contextvars)
+- [x] Engram: decisões-semente salvas (DEC-ORB-001..021)
+- **Verificado:** `docker compose up` — db `pgvector:pg16` **healthy** e `/health`→200 `{"status":"ok"}`, `/health/ready`→200 `{"db":true}`, header `X-Request-Id` presente. Local: `ruff` limpo + `pytest` 2/2. ✅
 
 ## Fase 1 — Contextos + ports/adapters + persistência + outbox  ·  ~0.8h
 Meta: modelar o lead e os seams (incl. o `AiPort` entre `business` e `ai`); persistência resiliente; domínio testável sem infra.

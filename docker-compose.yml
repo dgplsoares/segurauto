@@ -1,0 +1,47 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-segurauto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-segurauto}
+      POSTGRES_DB: ${POSTGRES_DB:-segurauto}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data          # persistência (DEC-ORB-017)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-segurauto} -d ${POSTGRES_DB:-segurauto}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ai-service:
+    build: ./ai-service
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://segurauto:segurauto@db:5432/segurauto}
+      USE_FAKE_CRM: ${USE_FAKE_CRM:-1}
+      USE_FAKE_ADS: ${USE_FAKE_ADS:-1}
+      LLM_PROVIDER: ${LLM_PROVIDER:-stub}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy               # espera o banco saudável (DEC-ORB-017)
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+
+volumes:
+  pgdata:
