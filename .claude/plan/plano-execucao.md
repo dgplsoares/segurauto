@@ -52,17 +52,23 @@ Meta: fechar `LP → persist + outbox` de forma atômica e idempotente, antes de
 - [x] Auto-migrate no startup (entrypoint `alembic upgrade head`) — container self-sufficient
 - **Verificado:** `ruff` + `pytest` **24/24** (unit + integração). Docker stack: entrypoint migrou, `POST` 201→**200** (mesmo id, dedup), concorrente → **1 lead**, consent 422, `/metrics` com `leads_captured_total`, outbox `qualify\|pending\|1`. ✅
 
-## Fase 3 — Worker + agente de qualificação + RAG  ·  ~0.9h
-Meta: worker consome a outbox e substitui o placeholder por qualificação real (RAG + LangGraph); efeitos idempotentes.
+## Fase 3 — Enriquecimento assíncrono (RAG + qualificação + worker)  ·  ~1.6h
+**Refatiada em 3a / 3b / 3c** — plano-mestre e subfases em [`fase-3/`](fase-3/README.md). Entrega o
+enriquecimento de **background** do lead (qualificar + sincronizar CRM/Ads), **invisível no chat**.
 
-- [ ] `ai/api`: **contrato HTTP público** `POST /ai/qualify` e `POST /ai/support` (stateless); o `AiPort` in-process chama esses handlers (na V2, o mesmo contrato vira chamada HTTP)
-- [ ] **Worker** (em `business/`, loop async) consome a outbox at-least-once, com **retry/backoff** e **dead-letter**; re-hidrata `request_id`/`lead_id`; chama a IA **via `AiPort`**
-- [ ] `ai/rag` `RagService` (embedding → pgvector search → `RerankPort` → context → generate) + **seed** da knowledge_base
-- [ ] `ai/agents` `qualification_agent` (LangGraph) → `QualificationResult` estruturado (score + faixa + motivo)
-- [ ] `ai/providers` `ModelOrchestrator` + `LLMPort` (StubLLM determinístico p/ teste; OpenAI opt-in)
-- [ ] Handlers idempotentes (no `business`): `CrmPort.upsert` + `AdsPort.send_conversion` (event_id estável) + re-check terminal
-- [ ] Observabilidade IA: `log_agent_turn` (tokens) + eventos `rag_*` + métricas de LLM/outbox
-- **Verificar:** integração com LLM stub — qualificação determinística e estruturada; RAG recupera do seed; **rodar o worker 2x → efeitos 1x**; teste de concorrência (`asyncio.gather` de POSTs com a mesma chave → 1 lead). `real/` opt-in valida OpenAI.
+- [ ] **3a — RAG** ([`fase-3/3a-rag.md`](fase-3/3a-rag.md)): `RagService` + `vector_store` (pgvector + fallback keyword) + `EmbeddingsPort` + `IngestionService` + seed. *Verif.:* ingest → retrieve (stub; real opt-in).
+- [ ] **3b — qualification_agent** ([`fase-3/3b-qualification-agent.md`](fase-3/3b-qualification-agent.md)): LangGraph (rubric→retrieve→assess→combine) + `ModelOrchestrator` + `AgentConfig` + `AiPort.qualify` + `POST /ai/qualify`. *Verif.:* resultado estruturado **determinístico** com stub.
+- [ ] **3c — Worker** ([`fase-3/3c-worker.md`](fase-3/3c-worker.md)): **processo separado**, outbox `SKIP LOCKED` + `next_attempt_at` + dead-letter; qualify → encadeia CRM/Ads idempotentes. *Verif.:* **worker 2× → efeitos 1×**; concorrência (`asyncio.gather` mesma chave → 1 lead).
+
+> **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase (contexto fresco → antecipar gaps).
+
+## Reescopo proposto (EM REVISÃO — pende aprovação)
+A análise do fluxo E2E (chat-first de cotação) mostrou que o happy path é maior que o roadmap. Proposta:
+Fase 4 = suporte single-turn; **nova Fase 5** = conversa de cotação (prompt no hero → chat multi-turn →
+`quote_tool`(CRM) → PDF); **nova Fase 6** = personalização + ações (email/WhatsApp/SMS via outbox) +
+Click_ID; **Fase 7** = CI + entrega. **Pré-requisito das Fases 4+:** hardening de isolamento/auth
+([`../docs/isolamento-leads.md`](../docs/isolamento-leads.md)) — inclui a correção do LEAK-1 (dedup não
+deve expor dados de outro lead). Auth/conta e marketplace multi-seguradora = V2.
 
 ## Fase 4 — Agente de suporte + LP conectada  ·  ~0.7h
 Meta: suporte via RAG e a Landing Page real consumindo a API pelo BFF.
