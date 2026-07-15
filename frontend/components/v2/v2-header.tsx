@@ -35,7 +35,7 @@ export function V2Header() {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <a href="#" className="font-display text-2xl font-semibold tracking-tight text-primary">
-          segur<span className="text-accent">auto</span>
+          segur<span className="text-accent">Auto</span>
         </a>
 
         <nav className="hidden items-center gap-8 md:flex">

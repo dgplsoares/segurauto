@@ -10,7 +10,7 @@ export function V2Footer() {
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div>
             <span className="font-display text-2xl font-semibold tracking-tight">
-              segur<span className="text-accent">auto</span>
+              segur<span className="text-accent">Auto</span>
             </span>
             <p className="mt-4 max-w-xs text-sm text-primary-foreground/70">
               {footer.description}
