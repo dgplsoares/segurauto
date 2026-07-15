@@ -1,5 +1,9 @@
 # SegurAuto
 
+<p align="center">
+  <img src="docs/screenshot-segurauto.png" alt="SegurAuto — landing page de captação com consultor de IA" width="840">
+</p>
+
 Captação e qualificação de leads para **seguros de automóvel**. Uma landing page de captação
 alimenta um serviço de IA que **qualifica** cada lead e oferece **suporte** conversacional, com
 sincronização automática para o CRM da seguradora e eventos de conversão para plataformas de anúncios.
