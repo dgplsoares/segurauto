@@ -44,7 +44,9 @@ class ChatService:
             assistant = await self.repo.message_at_seq(session_id=session_id, seq=existing.seq + 1)
             reply = assistant.content if assistant else ""
             seq = assistant.seq if assistant else existing.seq
-            return self._result(sess, seq=seq, reply=reply, replay=True)
+            row = await QuoteService(self.repo.session).for_session(session_id)  # reidrata o card no replay
+            quote = quote_public(row) if row is not None else None
+            return self._result(sess, seq=seq, reply=reply, replay=True, quote=quote)
 
         base = await self.repo.max_seq(session_id=session_id)  # auto-curável (E4)
         user_seq, assistant_seq = base + 1, base + 2

@@ -7,7 +7,9 @@ from functools import lru_cache
 
 from app.business.ports import CrmSyncResult
 
-_AUTHORIZED_BROKERS = frozenset({"COR001", "COR002", "ABC123"})  # fake: corretores autorizados (E6)
+# FAKE da V1: autorização = pertença a este set. O adapter REAL vincula o broker_code a um corretor
+# autenticado/por-lead e aplica rate-limit (aqui é só um stub determinístico — DEC-ORB-043).
+_AUTHORIZED_BROKERS = frozenset({"COR001", "COR002", "ABC123"})  # E6: broker_code autorizado server-side
 
 
 class FakeCrm:

@@ -209,6 +209,30 @@ async def test_otp_records_notify_event_without_code(client, sm, db_engine):
     assert row is not None and "purpose" in row.req and "code" not in row.req
 
 
+async def test_quote_audit_response_has_no_raw_adapter_fields(client, sm, db_engine):
+    """F5b review #2: o evento crm_price_quote grava response EXPLÍCITO (sem o dict cru do adapter)."""
+    _, token = await _auth_lead(sm)
+    sid = await _create_session(client, token)
+    await client.post(f"/support/sessions/{sid}/messages", headers=_hdr(token),
+        json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t"})
+    async with db_engine.connect() as conn:
+        row = (await conn.execute(
+            text("SELECT response::text AS resp FROM business.integration_events WHERE session_id=:s"), {"s": sid}
+        )).first()
+    assert row is not None and "premium_cents" in row.resp and "annual_premium" not in row.resp
+
+
+async def test_quote_card_survives_turn_replay(client, sm):
+    """F5b review #4: o replay idempotente do turno de cotação reidrata o card (não devolve quote=null)."""
+    _, token = await _auth_lead(sm)
+    sid = await _create_session(client, token)
+    body = {"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t1"}
+    r1 = await client.post(f"/support/sessions/{sid}/messages", json=body, headers=_hdr(token))
+    r2 = await client.post(f"/support/sessions/{sid}/messages", json=body, headers=_hdr(token))
+    assert r2.json()["replay"] is True and r2.json()["quote"] is not None
+    assert r2.json()["quote"]["quote_id"] == r1.json()["quote"]["quote_id"]
+
+
 async def _insert_otp(sm, email: str, code: str) -> None:
     async with sm() as session:
         await AuthRepository(session).insert_otp(

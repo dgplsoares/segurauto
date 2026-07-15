@@ -469,3 +469,12 @@ desconto só p/ corretor autorizado, GET /quote anti-IDOR). **Smoke HTTP:** card
 **Verificado (5b.2):** `ruff` + `pytest` **91** (53 unit + 38 integração — worker registra crm_sync + 2×
 ads_conversion; quote registra crm_price_quote; OTP registra notify_otp **sem o código**). **Smoke HTTP:**
 `integration_events` populado (crm_price_quote + notify_otp sem código). ✅
+
+**Revisão adversarial (5b):** workflow de 9 agentes (4 dimensões + verificação). **4 confirmados** (5 total;
+1 refutado) — nenhum crítico. Corrigidos: **(#2 MEDIUM)** `crm_price_quote` gravava o **dict cru** do
+adapter no audit (`response=result`) → response **explícito** (whitelist), fecha vazamento latente de
+PII/segredo na troca fake→real; **(#4 LOW)** replay do turno de cotação devolvia `quote=null` → **reidrata o
+card**; **(#3 LOW)** `status='error'` era código morto → comentário honesto (falhas ficam no outbox/retry).
+**(#1 LOW documentado):** autorização de `broker_code` no CRM fake é pertença a um set curto sem
+vínculo/rate-limit — **fake da V1** (o adapter real vincula/limita); comentário adicionado. `pytest` **93**
+(53 unit + 40 integração). ✅

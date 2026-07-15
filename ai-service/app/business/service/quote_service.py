@@ -58,6 +58,10 @@ class QuoteService:
             self.session, event_type="crm_price_quote", lead_id=lead_id, session_id=session_id,
             request={"vehicle": slots.get("vehicle"), "zipcode": slots.get("zipcode"),
                      "broker_code": slots.get("broker_code")},
-            response=result, request_id=request_id_ctx.get(),
+            # response EXPLÍCITO (não o dict cru do adapter): um price_quote real poderia devolver campos
+            # extras (PII/segredo) que cairiam verbatim no audit append-only lido pela jornada (DEC-ORB-044).
+            response={"premium_cents": row.premium_cents, "currency": result["currency"],
+                      "broker_applied": result["broker_applied"]},
+            request_id=request_id_ctx.get(),
         )
         return row, result

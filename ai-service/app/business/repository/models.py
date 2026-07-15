@@ -180,6 +180,6 @@ class IntegrationEventRow(Base):
     event_type: Mapped[str] = mapped_column(String(40), index=True)  # crm_sync|crm_price_quote|ads_conversion|notify
     request: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     response: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    status: Mapped[str] = mapped_column(String(20), server_default="ok")  # ok|error
+    status: Mapped[str] = mapped_column(String(20), server_default="ok")  # sucessos; falhas ficam no outbox/retry
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
