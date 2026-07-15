@@ -159,3 +159,85 @@
 - **Trade-off:** disciplina extra na V1 (uma porta, um contrato, dois schemas, correlação por header) —
   **zero** container novo agora; em troca, a separação futura é **aditiva e sem quebrar a aplicação**.
   Ver `.claude/plan/plano-execucao.md` (layout) e `.claude/plan/roadmap-v2.md`.
+
+---
+
+## Sistema de agents, isolamento e reescopo (Fase 3+)
+
+### DEC-ORB-022 — AgentConfig parametrizado
+- **Escolha:** o comportamento do agente (modelo, provider, temperatura, `k`, `similarity_threshold`,
+  `use_rerank`, `rag_mode`, `sufficiency_threshold`, prompts) vem de **config**: V1 em env/hardcoded; V2 no painel admin.
+- **Trade-off:** disciplina de config vs. literais espalhados; mesmo seam do corte V1/V2 (DEC-ORB-020).
+
+### DEC-ORB-023 — RAG dual-mode + Context Validation + `ragMode=rag_preferred`
+- **Escolha:** **stub** = retrieval por keyword (`ILIKE`) + rerank heurístico (determinístico, CI); **real**
+  = pgvector semântico + rerank. Ambos com **Context Validation** (suficiência); `ragMode=rag_preferred`
+  (se insuficiente → recusa/handoff, **não alucina**).
+- **Trade-off:** dois caminhos de retrieval, em troca de CI sem rede e de não inventar cobertura/preço.
+
+### DEC-ORB-024 — LangGraph com estado explícito + arestas condicionais
+- **Escolha:** grafos com estado explícito e arestas condicionais (fallback stub / suficiência / handoff);
+  mínimo na V1, extensível a multi-turno sem retrabalho.
+- **Trade-off:** mais estrutura que uma chain linear, em troca de testabilidade e evolução.
+
+### DEC-ORB-025 — Worker como processo separado
+- **Escolha:** serviço `worker` no compose (mesma imagem, `python -m app.business.worker`). Claim por
+  `SELECT ... FOR UPDATE SKIP LOCKED` + backoff persistente (`next_attempt_at`) + dead-letter. Hedge: loop
+  callable rodável in-process sob flag (dev/testes).
+- **Trade-off:** +1 processo, em troca de **isolamento de runtime** (LLM lento não derruba a captura) e
+  congruência com a V2. `SKIP LOCKED` ≠ exactly-once → **handlers idempotentes obrigatórios** (DEC-ORB-014).
+
+### DEC-ORB-026 — Guardrails do agente
+- **Escolha:** entrada do usuário e documentos recuperados são **dados não-confiáveis** →
+  **prompt-injection scope-and-strip** (responde o legítimo, recusa o off-topic); PII mascarada.
+- **Trade-off:** um passo de guardrail por turno, em troca de resistência a injeção e vazamento.
+
+### DEC-ORB-027 — Agente conversacional ÚNICO com tools (não action-agent via handoff)
+- **Escolha:** um agente conversacional com **tool-calling** (quote/pdf/kb/crm_update/notify/conversion/
+  handoff); **handoff reservado a HUMANO**. O determinismo da cotação vive no `quote_tool(CRM)`. Único split:
+  `qualification_agent` (headless, no worker) vs. conversacional (chat), separados por contexto de execução
+  e comunicando-se pela **outbox**. Regra: **read-inline** (quote/pdf/kb) vs **write-through-outbox**
+  (crm_update/notify/conversion/handoff, só após confirmação explícita).
+- **Trade-off:** um agente com mais tools, em troca de menos superfície, sem round-trip de handoff e
+  mantendo a IA stateless/extraível.
+
+### DEC-ORB-028 — Handoff V1 = detectar + flag + mensagem + intent (fake)
+- **Escolha:** detectar (keyword+intent) + **flag ortogonal ao status** (`Lead.handoff_requested_at`/`reason`) +
+  mensagem honesta + `IntentType.HANDOFF` na outbox (handler **fake** via `NotificationPort`); ação real
+  (notificar corretor/roteamento) = 1ª task **pós-V1**, trocando fake→real no MESMO seam.
+- **Trade-off:** um handler no-op na V1, em troca de exercitar o cano inteiro sem efeito real e sem retrabalho.
+
+### DEC-ORB-029 — Cache de saídas de LLM (seam na V1)
+- **Escolha:** `CachePort` + `NullCache` default (no-op, CI determinístico). Só cachear conteúdo
+  **genérico/sem-PII/independente de lead** (FAQ do suporte) em `ai.llm_cache` (relacional, chave
+  `sha256(scope|model|prompt_version|corpus_version|prompt)`); camada semântica pgvector **pós-V1**.
+  **NUNCA** cachear qualificação (determinística) nem cotações (lead-específicas).
+- **Trade-off:** +1 seam/tabela, em troca de custo/latência menores no modo real, sem vazar entre leads.
+
+### DEC-ORB-030 — Isolamento & Auth (pré-requisito das Fases 4+)
+- **Escolha:** **primitivo de auth** (token opaco server-side → `lead_id`); **desacoplar Idempotency-Key de
+  identidade** (correção do **LEAK-1**: dedup não expõe `id/score/band` de outro lead → `{deduped:true}` ou
+  409); `X-Request-Id` só de origem confiável (nunca ecoar); **history business-owned** (`chat_sessions`/
+  `chat_messages`, `UNIQUE(session_id,seq)`), IA recebe o transcrito montado; **lock por sessão**;
+  **masking central de PII** (filtro no logging, inclui placa); artefatos por endpoint autenticado; artefato
+  do lead fora do vector store. Inclui **ciclo de vida da sessão + login OTP** (ver `docs/isolamento-leads.md`).
+- **Trade-off:** trabalho de auth/isolamento antes do chat, em troca de fechar IDOR/vazamento de PII.
+
+### DEC-ORB-031 — Extensões backward-compatible de portas
+- **Escolha:** `CrmPort.upsert_lead(..., stage=None)`, `AdsPort.send_conversion(..., click_id=None)`,
+  `IntentType += HANDOFF/NOTIFY`; novos `PdfPort` e `NotificationPort` (fake default / real opt-in).
+- **Trade-off:** assinaturas crescem levemente, sem quebrar callers/fakes/testes atuais.
+
+### DEC-ORB-032 — Atribuição por UTM / Click_ID
+- **Escolha:** capturar `utm_*`/`click_id` (gclid/fbclid) na LP → persistir no lead → enviar na conversão
+  (dedup segue por `event_id`). V1: **serviço fake de UTM no frontend** (4 campanhas: 2 Meta + 2 Google,
+  sorteio por submissão). Exige consent de tracking (LGPD).
+- **Trade-off:** +colunas e propagação ponta-a-ponta, em troca de fechar a atribuição de conversão.
+
+### DEC-ORB-033 — Roadmap reescopado (V1 chat-first)
+- **Escolha:** F3 (background: RAG+qualify+worker) · **F3.5 Hardening/Auth** (pré-F4) · F4 (suporte
+  single-turn) · **F5** (conversa de cotação: hero-prompt → chat multi-turn → `quote_tool` → PDF) · **F6**
+  (personalização + ações email/WhatsApp/SMS via outbox + Click_ID) · F7 (CI+entrega). Auth completa (RBAC)
+  e marketplace multi-seguradora = **V2**.
+- **Trade-off:** roadmap maior que o corte vertical original, protegendo o V1 que fecha e empurrando o
+  conversacional para V1.5.

@@ -46,4 +46,21 @@ ancorar a sessão de chat, isso vira impersonação.
 11. **Ações do chat na outbox** com `event_id` derivado de `(session_id, tipo, turno)` — não só
     `(lead, plataforma)` — para retry at-least-once não duplicar ação de um turno.
 
+## Ciclo de vida da sessão + re-autenticação (OTP) — desenhar na fase de Hardening/Auth (pré-F4)
+
+Requisito registrado; **design dedicado no início da fase de Hardening/Auth** (contexto fresco).
+
+- **Sessão** ligada ao lead pelo token server-side (invariante 1). **Expiração:** definir política no design
+  (proposta inicial: inatividade ~30 min com *sliding window*; TTL absoluto de segurança). Não deixar aberta para sempre.
+- **Retorno após expirar — NÃO duplicar o lead.** O usuário **re-autentica para a MESMA identidade**
+  (resolvida por **e-mail verificado**), nunca cria lead novo. Isso encerra o LEAK-1 (a `Idempotency-Key`
+  deixa de ser âncora de identidade; a identidade passa a ser o e-mail verificado via OTP).
+- **Login do recorrente (UX tradicional):** no modal aberto ao iniciar um chat (não autenticado), **botão
+  secundário "Já tem cadastro? Entre"** → pede **e-mail** → dispara e-mail com **token OTP de 5 dígitos** →
+  o modal desativa o botão e revela **5 campos sequenciais** + **timer regressivo de 30s** para reenviar o token.
+- **Colisão no cadastro:** se o usuário digitar no cadastro um e-mail **já existente** → informar "você já
+  tem cadastro" e disparar o **MESMO fluxo OTP** (não cria duplicado).
+- **OTP:** curto, **TTL ~10 min**, **uso único**, **rate-limit** de envio, nunca logado em claro; o e-mail é
+  fake/mock na V1 (seam de `NotificationPort`), real opt-in.
+
 > Detalhe da auditoria e cenários de ataque: registrado no diário e na análise consolidada do processo.

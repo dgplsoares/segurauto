@@ -30,6 +30,13 @@ SELECT * FROM business.outbox
 - `qualify` → `AiPort.qualify` → aplica score/faixa/status no lead → **encadeia** as intents downstream.
 - `crm_sync` → `CrmPort.upsert_lead` (idempotente). `ads_*` → `AdsPort.send_conversion(event_id)` (dedup).
 
+## Plumbing de atribuição (UTM / Click_ID)
+- Migration aditiva: colunas `utm_source`/`utm_medium`/`utm_campaign`/`click_id` em `business.leads`
+  (nullable) — o `POST /leads` passa a aceitá-las (opcional, backward-compatible).
+- `AdsPort.send_conversion(..., click_id: str | None = None)` (assinatura estendida, dedup segue por `event_id`).
+- O worker lê o `click_id`/UTM do lead e os envia na conversão. *(O serviço fake de UTM que SORTEIA a
+  campanha vive no frontend — Fase 5; coleção de 4 campanhas fake: 2 Meta + 2 Google.)*
+
 ## Observabilidade
 `log_agent_turn` (tokens) no qualify; eventos `outbox_picked/done/retry/deadletter`; métricas de outbox
 (profundidade/lag como gauge derivado de query no `/metrics` do ai-service, que tem DB) e de LLM.

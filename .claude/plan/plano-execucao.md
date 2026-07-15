@@ -62,13 +62,22 @@ enriquecimento de **background** do lead (qualificar + sincronizar CRM/Ads), **i
 
 > **Protocolo:** reanálise pré-fase dedicada ao iniciar cada subfase (contexto fresco → antecipar gaps).
 
-## Reescopo proposto (EM REVISÃO — pende aprovação)
-A análise do fluxo E2E (chat-first de cotação) mostrou que o happy path é maior que o roadmap. Proposta:
-Fase 4 = suporte single-turn; **nova Fase 5** = conversa de cotação (prompt no hero → chat multi-turn →
-`quote_tool`(CRM) → PDF); **nova Fase 6** = personalização + ações (email/WhatsApp/SMS via outbox) +
-Click_ID; **Fase 7** = CI + entrega. **Pré-requisito das Fases 4+:** hardening de isolamento/auth
-([`../docs/isolamento-leads.md`](../docs/isolamento-leads.md)) — inclui a correção do LEAK-1 (dedup não
-deve expor dados de outro lead). Auth/conta e marketplace multi-seguradora = V2.
+## Roadmap reescopado (aprovado)
+A análise do fluxo E2E (chat-first de cotação) mostrou que o happy path é maior que o roadmap original:
+- **Fase 3** (3a/3b/3c) — enriquecimento de background (RAG + qualificação + worker). *(3c inclui o
+  **plumbing de Click_ID/UTM**: colunas `utm_*`/`click_id` no lead via migration aditiva + a conversão
+  carregando o `click_id`.)*
+- **Fase 3.5 — Hardening / Auth** (pré-requisito das Fases 4+): correção do **LEAK-1** + invariantes de
+  isolamento + **primitivo de auth (token server-side → lead_id)** + **login OTP e ciclo de vida da sessão**
+  (ver [`../docs/isolamento-leads.md`](../docs/isolamento-leads.md)). *Design dedicado no início desta fase.*
+- **Fase 4** — suporte single-turn + LP conectada.
+- **Fase 5** — conversa de cotação (prompt no hero → chat multi-turn → `quote_tool`(CRM) → PDF). *(Inclui o
+  **serviço fake de UTM no frontend**: coleção de 4 campanhas fake — 2 Meta Ads + 2 Google Ads — sorteando
+  uma por submissão de lead.)*
+- **Fase 6** — personalização + ações (email/WhatsApp/SMS via outbox) + atribuição por Click_ID.
+- **Fase 7** — CI + entrega.
+
+Auth/conta completa (RBAC) e marketplace multi-seguradora = **V2**.
 
 ## Fase 4 — Agente de suporte + LP conectada  ·  ~0.7h
 Meta: suporte via RAG e a Landing Page real consumindo a API pelo BFF.
