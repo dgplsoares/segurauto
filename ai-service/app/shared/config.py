@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     session_absolute_ttl_s: int = 43200  # 12 h
     session_slide_coalesce_s: int = 60
 
+    # Chat multi-turn (DEC-ORB-038/040). Pool ISOLADO + timeouts: um turno lento não inani a captura.
+    chat_pool_size: int = 5
+    chat_pool_max_overflow: int = 5
+    chat_lock_timeout_ms: int = 3000        # espera máx. pelo FOR UPDATE (turno concorrente → 409 rápido)
+    chat_statement_timeout_ms: int = 20000  # teto de statement no pool do chat
+    chat_transcript_max_turns: int = 20     # janela do transcrito passado à IA (E8)
+    chat_message_max_len: int = 2000        # cap de entrada da mensagem (E8)
+
     @property
     def masked_openai_key(self) -> str:
         """Nunca logar a chave em claro (DEC-ORB-018 — PII/segredos)."""

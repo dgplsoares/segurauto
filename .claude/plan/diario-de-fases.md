@@ -348,3 +348,36 @@ Plano-mestre em `fase-4/`. Reanálise dedicada por subfase (contexto fresco → 
 estática. **Smoke E2E** na stack real (db+ai-service+worker via Docker, BFF via `next start`): `POST /api/lead`
 **201** + retry mesma key **200** (dedup); `request-otp` **202** neutro; `verify-otp` código errado **401**;
 `/api/support` sem token **401** (anti-IDOR) e com sessão **200** (RAG in-domain; out-domain recusa + handoff). ✅
+
+## Fase 5 — Conversa de cotação (multi-turn) · V1.5
+
+Fatiada: **F5a** (backend: persistência + agente multi-turn) → **5a.1** (persistência + endpoints) +
+**5a.2** (ConverseAgent + guardrails); **F5b** (tools de cotação/PDF); **F5c** (frontend, quando o Figma
+aterrissar). Reanálise adversarial em `fase-5/5a-persistencia-conversa.md` (design + 8 emendas do pentest);
+decisões DEC-ORB-038..041.
+
+### Fase 5a.1 — Persistência de conversa + endpoints
+
+**Descobertas (depois):**
+- **Prep de frontend:** `lib/api.ts` (4 funções client-side → BFF) + refactor da LP para consumi-lo
+  (commit `423c158`) — o módulo que o export do Figma Make vai espelhar.
+- **Migração `0004`:** `business.identities`, `chat_sessions`, `chat_messages` (`UNIQUE(session_id,seq)` +
+  `UNIQUE(session_id,client_turn_id)`, FK+CASCADE só dentro de `business`; nada em `ai.*`).
+- **Gate de posse compartilhado (E1):** `load_owned_for_update` (turno, com lock) e `load_owned` (leitura)
+  revalidam `lead_id` no backend — `chat_messages` não tem `lead_id`, então nenhuma leitura toca mensagens
+  sem confirmar a posse. **404 neutro** (nunca 403), `session_id` do path como `str` (não 422).
+- **Idempotência de turno (E2):** `client_turn_id` → replay do assistant já gravado; retry não duplica.
+- **`seq` auto-curável (E4):** `COALESCE(MAX(seq),0)+1` sob o lock (fonte única = as mensagens).
+- **`canonical_lead_id` (DEC-ORB-041):** `verify_otp` faz upsert em `identities` e minta a sessão com o
+  `lead_id` canônico → re-auth resolve a mesma âncora; o gate segue estrito em `lead_id`.
+- **Pool isolado do chat (E3/DEC-ORB-040):** `get_chat_session` num engine próprio com `lock_timeout`/
+  `statement_timeout` (`server_settings`); `require_session_chat` roda no mesmo pool → um turno lento nunca
+  inani a captura (`/leads`). Turno concorrente na mesma sessão → **409** rápido (`OperationalError`).
+- **Slots determinísticos (E6/E8):** `domain/slots.py` valida VALOR (não só chave), neutraliza CR/LF, e o
+  `create_session` valida `seed_slots`. A resposta do turno é um **stub** — o `ConverseAgent` entra na 5a.2.
+- **Sem mudança de escopo. 5a.1 concluída.** Próximo: **5a.2** (agente + extração/guardrails + masking).
+
+**Verificado (5a.1):** `ruff` limpo + `pytest` **69** (38 unit incl. slots + 31 integração incl. 8 de chat:
+anti-IDOR→404, idempotência→efeito 1×, seq monotônico, `canonical_lead_id` estável na re-auth). **Smoke
+HTTP** na stack real (pool isolado): create **201** → turno **200** (seq 2) → retry **replay** (histórico 2,
+não duplica) → GET `[user, assistant]` → anti-IDOR **404** → sem token **401**. ✅

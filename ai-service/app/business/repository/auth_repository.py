@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.business.repository.models import AuthSessionRow, LeadRow, OtpCodeRow
+from app.business.repository.models import AuthSessionRow, IdentityRow, LeadRow, OtpCodeRow
 
 
 class AuthRepository:
@@ -76,3 +76,15 @@ class AuthRepository:
         await self.session.execute(
             update(AuthSessionRow).where(AuthSessionRow.token_hash == token_hash).values(revoked_at=func.now())
         )
+
+    async def get_identity(self, email_normalized: str) -> IdentityRow | None:
+        result = await self.session.execute(
+            select(IdentityRow).where(IdentityRow.email_normalized == email_normalized)
+        )
+        return result.scalar_one_or_none()
+
+    async def insert_identity(self, *, email_normalized: str, canonical_lead_id: str) -> IdentityRow:
+        row = IdentityRow(email_normalized=email_normalized, canonical_lead_id=canonical_lead_id)
+        self.session.add(row)
+        await self.session.flush()
+        return row

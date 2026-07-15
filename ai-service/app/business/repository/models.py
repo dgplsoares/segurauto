@@ -1,7 +1,18 @@
 """Modelos ORM do contexto `business` (schema `business`). Sem FK para o schema `ai` (DEC-ORB-021)."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -76,4 +87,57 @@ class OtpCodeRow(Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IdentityRow(Base):
+    """Identidade canônica por e-mail verificado (DEC-ORB-041). `canonical_lead_id` é a âncora **estável**
+    da sessão: a re-auth resolve sempre o mesmo `lead_id`, dando continuidade sem afrouxar o gate."""
+
+    __tablename__ = "identities"
+    __table_args__ = {"schema": "business"}
+
+    email_normalized: Mapped[str] = mapped_column(String(320), primary_key=True)
+    canonical_lead_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatSessionRow(Base):
+    """Conversa de cotação (DEC-ORB-038). Escopada ao `lead_id` canônico (id NU, sem FK cruzada de schema).
+    `slots` = estado de slot-filling business-owned; `quote_ready_at`/`handoff_*` são ganchos ortogonais
+    (F5b/handoff), nunca `funnel_status` (DEC-ORB-034)."""
+
+    __tablename__ = "chat_sessions"
+    __table_args__ = {"schema": "business"}
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lead_id: Mapped[str] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(20), server_default="active")  # active | closed
+    slots: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    quote_ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    handoff_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    handoff_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_turn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatMessageRow(Base):
+    """Mensagem da conversa (DEC-ORB-038). `seq` ordena/dedup o turno; `client_turn_id` dá **idempotência
+    de turno lógico** (replay em retry). `content` NUNCA é logado cru (masking central, inv.10)."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_chat_messages_session_seq"),
+        UniqueConstraint("session_id", "client_turn_id", name="uq_chat_messages_session_turn"),
+        {"schema": "business"},
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("business.chat_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # user | assistant
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    client_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

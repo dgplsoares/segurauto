@@ -64,14 +64,25 @@ class AuthService:
         lead = await self.repo.latest_lead_by_email(email)
         if lead is None:
             return None
+        canonical_lead_id = await self._canonical_lead_id(email, lead.id)
         token = new_session_token()
         await self.repo.insert_session(
-            token_hash=token_pk(token), lead_id=lead.id,
+            token_hash=token_pk(token), lead_id=canonical_lead_id,
             expires_at=now + timedelta(seconds=s.session_idle_ttl_s),
             absolute_expires_at=now + timedelta(seconds=s.session_absolute_ttl_s),
         )
-        logger.info("session_issued lead_id=%s", lead.id)
+        logger.info("session_issued lead_id=%s", canonical_lead_id)
         return token
+
+    async def _canonical_lead_id(self, email: str, resolved_lead_id: str) -> str:
+        """Âncora estável por identidade (DEC-ORB-041): a re-auth resolve sempre o mesmo `lead_id`, então
+        o gate segue estrito em `lead_id` sem afrouxar para e-mail. Sem corrida: o `FOR UPDATE` do OTP
+        serializa dois verify do mesmo e-mail (o 2º acha o código já consumido)."""
+        ident = await self.repo.get_identity(email)
+        if ident is not None:
+            return ident.canonical_lead_id
+        await self.repo.insert_identity(email_normalized=email, canonical_lead_id=resolved_lead_id)
+        return resolved_lead_id
 
     def _throttled(self, otp: OtpCodeRow, now: datetime) -> bool:
         if otp.last_attempt_at is None:

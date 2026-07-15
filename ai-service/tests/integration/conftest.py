@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.main import app
-from app.shared.database import get_session
+from app.shared.database import get_chat_session, get_session
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://segurauto:segurauto@localhost:5432/segurauto")
 
@@ -23,7 +23,10 @@ async def db_engine():
     engine = create_async_engine(DB_URL)
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("TRUNCATE business.leads, business.outbox"))
+            await conn.execute(text(
+                "TRUNCATE business.leads, business.outbox, business.chat_messages, business.chat_sessions, "
+                "business.identities, business.auth_sessions, business.otp_codes"
+            ))
     except Exception as exc:  # banco indisponível / não migrado
         await engine.dispose()
         pytest.skip(f"DB de integração indisponível: {exc}")
@@ -40,6 +43,8 @@ async def client(db_engine):
             yield session
 
     app.dependency_overrides[get_session] = _override_get_session
+    # Chat usa um pool isolado (DEC-ORB-040); nos testes, o mesmo engine do teste.
+    app.dependency_overrides[get_chat_session] = _override_get_session
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
