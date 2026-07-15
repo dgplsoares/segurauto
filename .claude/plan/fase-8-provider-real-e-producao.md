@@ -75,13 +75,12 @@ que roteia por host/path e termina TLS no **edge (Cloudflare)**, falando HTTP co
 como um **stack isolado**:
 - **Compose próprio** (`db` Postgres próprio + `ai-service` + `worker` + `frontend`) numa **rede Docker
   própria**; **zero portas publicadas no host** (evita conflitos e reduz superfície).
-- **Um único ponto de integração:** o proxy compartilhado ganha uma rota nova (`projetos.diogosoares.com.br`,
-  path `/segurauto/`) → `frontend` interno; nada do que já roda no servidor é alterado.
-- **Next.js `basePath: '/segurauto'`** para servir sob o sub-path; a BFF fala com o `ai-service` pela rede
-  interna.
+- **Um único ponto de integração:** o proxy compartilhado ganha um `server_name` novo
+  (**`app-segurauto.diogosoares.com.br`**) → `frontend` interno na raiz; nada do que já roda no servidor é alterado.
+- **Subdomínio dedicado ⇒ sem `basePath`** no Next.js (serve na `/`); a BFF fala com o `ai-service` pela rede interna.
 - **Postura de produção:** `ENVIRONMENT=production` (eval API + OTP dev-echo OFF por padrão), `auth_pepper`
   real, provider LLM real por `.env`. Para a **avaliação**: `ENABLE_EVAL_API=true` (dados fakes) + a rota
-  `/segurauto/eval/*` protegida por basic-auth no proxy; o avaliador usa o **seed** (bypassa OTP) + as URLs
+  a rota `/eval/*` (em `app-segurauto.diogosoares.com.br`) protegida por basic-auth no proxy; o avaliador usa o **seed** (bypassa OTP) + as URLs
   da jornada.
 - **CI/CD:** um workflow de deploy dedicado (o CI atual continua sendo o gate de PR). Rollback em falha.
 
@@ -91,7 +90,7 @@ permissões) ficam **no runbook local, fora deste repositório**.
 **Decisão de infra:** **IP dedicado não é necessário** — o roteamento por host/path no proxy compartilhado
 serve múltiplos domínios no mesmo IP/443.
 
-**Verificar:** stack isolado sobe sem tocar o que já roda; `https://projetos.diogosoares.com.br/segurauto`
+**Verificar:** stack isolado sobe sem tocar o que já roda; `https://app-segurauto.diogosoares.com.br`
 carrega a LP; jornada acessível (protegida); nenhuma porta nova publicada no host; smoke do fluxo completo.
 
 ---
