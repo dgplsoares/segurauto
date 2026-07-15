@@ -48,11 +48,13 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)  # /support/sessions (chat multi-turn — F5a)
 
     # Contexto ai — contrato stateless /ai/* (DEC-ORB-021)
+    from app.ai.api.converse import router as ai_converse_router
     from app.ai.api.qualify import router as ai_qualify_router
     from app.ai.api.support import router as ai_support_router
 
     app.include_router(ai_qualify_router, prefix="/ai")
     app.include_router(ai_support_router, prefix="/ai")
+    app.include_router(ai_converse_router, prefix="/ai")
     return app
 
 

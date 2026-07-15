@@ -129,6 +129,21 @@ async def test_seed_slots_validated_and_missing_reported(client, sm):
     assert body["missing_slots"] == []  # vehicle+zipcode+has_broker(False) → completo
 
 
+async def test_turn_extracts_slots_and_signals_ready_to_quote(client, sm):
+    _, token = await _auth_lead(sm)
+    sid = await _create_session(client, token)
+    r = await client.post(
+        f"/support/sessions/{sid}/messages",
+        json={"message": "placa ABC1D23, CEP 01310-100, não tenho corretor", "client_turn_id": "t1"},
+        headers=_hdr(token),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    # Extração determinística no turno (E6) → slots completos → sinaliza pronto para cotar (F5b não cota).
+    assert body["slots"] == {"vehicle": "ABC1D23", "zipcode": "01310100", "has_broker": False}
+    assert body["missing_slots"] == [] and body["ready_to_quote"] is True
+
+
 async def _insert_otp(sm, email: str, code: str) -> None:
     async with sm() as session:
         await AuthRepository(session).insert_otp(

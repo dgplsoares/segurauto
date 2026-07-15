@@ -4,7 +4,6 @@ Single-turn, **stateless**. A `RagService` (com a sessão do request) é passada
 o engine global. `rag_mode=rag_preferred`: contexto insuficiente → **recusa** (não alucina). O input do
 usuário e os documentos são **dados não-confiáveis** (scope-and-strip + system prompt).
 """
-import re
 from functools import lru_cache
 from typing import Any, TypedDict
 
@@ -13,22 +12,9 @@ from langgraph.graph import END, StateGraph
 from app.ai.agents.config import AgentConfig, get_support_config
 from app.ai.providers.llm import get_llm
 from app.ai.providers.orchestrator import ModelOrchestrator
+from app.shared.guards import detect_handoff, strip_injection  # reusados (E5/E7); re-exportados p/ compat
 
-_INJECTION_RE = re.compile(
-    r"(?i)(ignore\s+(as\s+|todas\s+as\s+)?(instru\w+|previous|anteriores)|desconsidere|system\s+prompt|"
-    r"forget\s+(the\s+)?(above|previous)|act\s+as|aja\s+como|revele|reveal)"
-)
-_HANDOFF_TERMS = ("corretor", "contratar", "fechar", "falar com humano", "atendente", "comprar")
-
-
-def strip_injection(query: str) -> str:
-    """Neutraliza diretivas de prompt-injection, mantendo a pergunta (scope-and-strip)."""
-    return " ".join(_INJECTION_RE.sub(" ", query).split())[:500]
-
-
-def detect_handoff(query: str) -> bool:
-    q = query.lower()
-    return any(term in q for term in _HANDOFF_TERMS)
+__all__ = ["SupportAgent", "detect_handoff", "get_support_agent", "strip_injection"]
 
 
 class SupportState(TypedDict, total=False):

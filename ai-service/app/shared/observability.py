@@ -39,15 +39,22 @@ def log_agent_turn(
     )
 
 
-# ---- Masking de PII (DEC-ORB-036): padrões SEGUROS que não colidem com UUID/ids ----
+# ---- Masking de PII (DEC-ORB-036 + E8): padrões SEGUROS que não colidem com UUID/ids ----
+# UUID: 8-4-4-4-12 (com hífens) e request_id = uuid4().hex (32 hex, sem hífen). Os padrões abaixo exigem
+# hífen na posição do CEP/telefone e ancoram a placa em 7 chars com \b — nenhum casa segmentos de UUID.
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _CPF_RE = re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b")       # só o formato pontuado (não bare 11 dígitos)
-_PLACA_RE = re.compile(r"\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b")     # MAIÚSCULO → não casa uuid hex (minúsculo)
+_CEP_RE = re.compile(r"\b\d{5}-\d{3}\b")                     # CEP formatado (hífen na pos.5 → não casa uuid)
+# Telefone BR: exige parêntese OU espaço separando o DDD (senão casaria dígitos de UUID tipo 2345678-1234).
+_PHONE_RE = re.compile(r"\(\d{2}\)\s?\d{4,5}-\d{4}|\b\d{2}\s\d{4,5}-\d{4}\b")
+_PLACA_RE = re.compile(r"(?i)\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b")  # E8: case-insensitive (7 chars + \b → não uuid)
 
 
 def redact_pii(text: str) -> str:
     text = _EMAIL_RE.sub("[email]", text)
     text = _CPF_RE.sub("[cpf]", text)
+    text = _CEP_RE.sub("[cep]", text)
+    text = _PHONE_RE.sub("[telefone]", text)
     text = _PLACA_RE.sub("[placa]", text)
     return text
 

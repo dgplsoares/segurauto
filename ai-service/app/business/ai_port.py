@@ -24,6 +24,10 @@ class AiPort(Protocol):
 
     async def support(self, *, query: str, session) -> dict: ...
 
+    async def converse(
+        self, *, transcript: list, slots: dict, missing: list, progressed: bool, user_message: str, session
+    ) -> dict: ...
+
 
 class InProcessAiAdapter:
     """Implementação in-process do `AiPort`. `qualify` delega ao grafo do contexto `ai` (o único
@@ -59,3 +63,21 @@ class InProcessAiAdapter:
         cfg = get_support_config()
         rag = RagService(VectorStore(session), get_embedder(), k=cfg.rag_k, min_score=cfg.rag_min_score)
         return await get_support_agent().answer(query, rag=rag)
+
+    async def converse(
+        self, *, transcript: list, slots: dict, missing: list, progressed: bool, user_message: str, session
+    ) -> dict:
+        # O consultor LÊ o RAG → recebe a sessão (detalhe in-process; na V2 o client HTTP a ignora). A
+        # extração de slots é do business (determinística) — o agente só recebe o estado e gera a resposta.
+        from app.ai.agents.config import get_converse_config
+        from app.ai.agents.converse_agent import get_converse_agent
+        from app.ai.providers.embeddings import get_embedder
+        from app.ai.rag.rag_service import RagService
+        from app.ai.rag.vector_store import VectorStore
+
+        cfg = get_converse_config()
+        rag = RagService(VectorStore(session), get_embedder(), k=cfg.rag_k, min_score=cfg.rag_min_score)
+        return await get_converse_agent().converse(
+            transcript=transcript, slots=slots, missing=missing, progressed=progressed,
+            user_message=user_message, rag=rag,
+        )

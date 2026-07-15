@@ -1,5 +1,10 @@
-"""Fase 5a.1 — validação determinística de slots (DEC-ORB-039: schema de VALOR, E6/E8), sem infra."""
-from app.business.domain.slots import is_ready_to_quote, missing_slots, validate_slots
+"""Fase 5a.1/5a.2 — validação e extração determinística de slots (DEC-ORB-039: E6/E8), sem infra."""
+from app.business.domain.slots import (
+    extract_slots_from_text,
+    is_ready_to_quote,
+    missing_slots,
+    validate_slots,
+)
 
 
 def test_validate_drops_unknown_keys_and_invalid_values():
@@ -29,3 +34,17 @@ def test_missing_slots_requires_broker_code_only_when_has_broker():
 def test_is_ready_to_quote():
     assert is_ready_to_quote({"vehicle": "Onix", "zipcode": "01310100", "has_broker": False}) is True
     assert is_ready_to_quote({"vehicle": "Onix"}) is False
+
+
+def test_extract_slots_from_text_deterministic():
+    out = extract_slots_from_text("a placa é ABC1D23, meu CEP 01310-100 e não tenho corretor")
+    assert out == {"vehicle": "ABC1D23", "zipcode": "01310100", "has_broker": False}
+
+
+def test_extract_has_broker_with_code():
+    out = extract_slots_from_text("tenho corretor sim, o código é XYZ99")
+    assert out.get("has_broker") is True and out.get("broker_code") == "XYZ99"
+
+
+def test_extract_nothing_from_offtopic():
+    assert extract_slots_from_text("qual a capital da frança?") == {}

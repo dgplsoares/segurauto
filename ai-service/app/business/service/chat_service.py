@@ -7,8 +7,16 @@ resposta é um **seam** (`_generate`): na F5a.1 é um stub determinístico; a F5
 """
 from datetime import datetime, timezone
 
-from app.business.domain.slots import is_ready_to_quote, missing_slots
+from app.business.ai_port import InProcessAiAdapter
+from app.business.domain.slots import (
+    extract_slots_from_text,
+    is_ready_to_quote,
+    missing_slots,
+    validate_slots,
+)
 from app.business.repository.chat_repository import ChatRepository
+from app.shared.config import get_settings
+from app.shared.guards import strip_injection
 
 
 class SessionNotFound(Exception):
@@ -20,8 +28,9 @@ def _now() -> datetime:
 
 
 class ChatService:
-    def __init__(self, repo: ChatRepository) -> None:
+    def __init__(self, repo: ChatRepository, ai_port=None) -> None:
         self.repo = repo
+        self.ai = ai_port or InProcessAiAdapter()
 
     async def run_turn(self, *, session_id: str, lead_id: str, message: str, client_turn_id: str) -> dict:
         sess = await self.repo.load_owned_for_update(session_id=session_id, lead_id=lead_id)
@@ -42,7 +51,9 @@ class ChatService:
             session_id=session_id, seq=user_seq, role="user", content=message, client_turn_id=client_turn_id
         )
 
-        reply, new_slots, handoff = self._generate(message, dict(sess.slots))
+        reply, new_slots, handoff = await self._converse(
+            session_id=session_id, message=message, slots=dict(sess.slots), user_seq=user_seq
+        )
 
         await self.repo.add_message(session_id=session_id, seq=assistant_seq, role="assistant", content=reply)
         sess.slots = new_slots
@@ -53,11 +64,24 @@ class ChatService:
             sess.handoff_requested_at = _now()
         return self._result(sess, seq=assistant_seq, reply=reply, replay=False)
 
-    def _generate(self, message: str, slots: dict) -> tuple[str, dict, bool]:
-        """STUB da F5a.1 (a F5a.2 substitui pelo `ConverseAgent`). Não extrai slots ainda; só devolve um
-        ack determinístico para exercitar persistência/idempotência/seq. `message` não é ecoado (evita
-        refletir input não-confiável)."""
-        return "[stub] recebido. O consultor multi-turn entra na F5a.2.", slots, False
+    async def _converse(
+        self, *, session_id: str, message: str, slots: dict, user_seq: int
+    ) -> tuple[str, dict, bool]:
+        """Extração DETERMINÍSTICA de slots (E6) no business; monta o transcrito sanitizado por linha +
+        janela (E5/E8) e chama o `ConverseAgent` via `AiPort` só para GERAR a resposta. O agente nunca
+        decide slots/cotação (isso é determinístico aqui) — número/decisão ficam fora do LLM."""
+        found = extract_slots_from_text(strip_injection(message))
+        merged = validate_slots({**slots, **found})
+        progressed = merged != slots
+        missing = missing_slots(merged)
+        prior = [m for m in await self.repo.list_messages(session_id=session_id) if m.seq < user_seq]
+        window = get_settings().chat_transcript_max_turns * 2  # ~2 mensagens por turno
+        transcript = [{"role": m.role, "content": strip_injection(m.content)} for m in prior[-window:]]  # E5
+        result = await self.ai.converse(
+            transcript=transcript, slots=merged, missing=missing, progressed=progressed,
+            user_message=message, session=self.repo.session,
+        )
+        return result.get("reply", ""), merged, bool(result.get("handoff_suggested", False))
 
     def _result(self, sess, *, seq: int, reply: str, replay: bool) -> dict:
         return {

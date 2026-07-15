@@ -13,6 +13,13 @@ _BROKER_RE = re.compile(r"^[A-Za-z0-9]{1,20}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")  # CR/LF/controle — anti log-forging (E8)
 _VEHICLE_MAX = 80
 
+# Extração determinística (E6): reconhece valores no texto por padrão — NUNCA por LLM.
+_PLATE_TEXT_RE = re.compile(r"\b([A-Za-z]{3}-?\d[A-Za-z0-9]\d{2})\b")
+_CEP_TEXT_RE = re.compile(r"\b(\d{5}-?\d{3})\b")
+_NO_BROKER_RE = re.compile(r"(?i)\b(n[ãa]o\s+tenho|sem|nenhum)\s+corretor")
+_HAS_BROKER_RE = re.compile(r"(?i)\b(tenho|com|meu|j[áa]\s+tenho)\s+corretor")
+_BROKER_CODE_RE = re.compile(r"(?i)c[óo]digo[^A-Za-z0-9]{0,4}([A-Za-z0-9]{3,20})")  # tolera "é/:/=" no meio
+
 
 def _clean(value: str, maxlen: int) -> str:
     return _CONTROL_RE.sub(" ", value).strip()[:maxlen]
@@ -48,3 +55,23 @@ def missing_slots(slots: dict) -> list[str]:
 
 def is_ready_to_quote(slots: dict) -> bool:
     return not missing_slots(slots)
+
+
+def extract_slots_from_text(text: str) -> dict:
+    """Extração DETERMINÍSTICA (E6) dos slots presentes no texto — nunca por LLM. Retorna só o que
+    reconhece, já validado por `validate_slots`. `broker_code` fica só no formato (autorização = F5b)."""
+    found: dict = {}
+    plate = _PLATE_TEXT_RE.search(text)
+    if plate:
+        found["vehicle"] = plate.group(1)
+    cep = _CEP_TEXT_RE.search(text)
+    if cep:
+        found["zipcode"] = cep.group(1)
+    if _NO_BROKER_RE.search(text):
+        found["has_broker"] = False
+    elif _HAS_BROKER_RE.search(text):
+        found["has_broker"] = True
+    code = _BROKER_CODE_RE.search(text)
+    if code:
+        found["broker_code"] = code.group(1)
+    return validate_slots(found)

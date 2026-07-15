@@ -389,3 +389,32 @@ como `DBAPIError` **base** (não `OperationalError`), então um turno concorrent
 o LLM. **Corrigido:** `concurrency_http_error` ramifica por `sqlstate` (`55P03`→409 `session_busy`;
 `57014`→503 `turn_timeout`; outro→propaga 500, não mascara `IntegrityError`) + teste de regressão. `pytest`
 **72** (41 unit + 31 integração). ✅
+
+### Fase 5a.2 — ConverseAgent (o agente multi-turn)
+
+**Descobertas (depois):**
+- **Refinamento de fronteira (DEC-ORB-021):** a **extração de slots ficou no `business`** (determinística,
+  E6), e o agente `ai` é só um **gerador de resposta** — assim o `/ai/*` não importa `business.domain` e o
+  seam da V2 fica mais limpo. O grafo `ai` virou `guard_in → retrieve → [cond] → respond | refuse`
+  (slot-aware via flags passadas pelo business), não o `extract` no agente que a reanálise previa.
+- **`shared/guards.py`:** `strip_injection`/`detect_handoff` movidos para `shared` (reuso `business`+`ai`
+  sem cross-import — E5). `support_agent` re-exporta para compat.
+- **`ConverseAgent` (LangGraph):** nós disjuntos das state keys; `RagService` no state (sem engine global);
+  sem checkpointer; fallback determinístico (pergunta o próximo slot). `get_converse_config()` + prompt.
+- **`/ai/converse` STATELESS:** contrato `{user_message, transcript, slots, missing, progressed}` — **sem
+  `session_id`/`lead_id`** (fecha o furo IDOR-LOW da reanálise). `AiPort.converse` + `InProcessAiAdapter`.
+- **`ChatService` real:** extração determinística (`extract_slots_from_text`) + **transcrito sanitizado por
+  linha + janela** (E5/E8) → `AiPort.converse` só para a resposta. Slots/`ready_to_quote`/handoff são
+  determinísticos no business — número/decisão fora do LLM. O stub `_generate` da 5a.1 foi removido.
+- **E8 masking estendido:** `redact_pii` ganhou CEP, telefone BR e placa **case-insensitive** — com regex
+  ancoradas (CEP exige hífen na pos.5; telefone exige parêntese/espaço no DDD) para **não corromper UUID**
+  de correlação (teste anti-UUID pegou 2 falsos-positivos meus e foram corrigidos).
+- **Extração:** placa/CEP por regex, "tem corretor?" por palavra-chave (nega antes de afirma),
+  `broker_code` tolerando "é/:/=" no meio; só formato (autorização no CRM = F5b).
+- **Sem mudança de escopo. 5a.2 concluída → FASE 5a COMPLETA** (persistência + agente multi-turn). Próximo:
+  **F5b** (tools `quote_tool`/`pdf_tool`) ou **F5c** (frontend, quando o Figma aterrissar).
+
+**Verificado (5a.2):** `ruff` limpo + `pytest` **80** (48 unit — extração/masking-anti-UUID/wiring; 32
+integração — turno extrai slots e sinaliza `ready_to_quote`). **Smoke HTTP** multi-turn na stack real: slots
+**acumulam entre turnos** (turno 1 CEP → turno 2 completa → `ready=True`); `/ai/converse` sem
+`session_id`/`lead_id` no schema. ✅
