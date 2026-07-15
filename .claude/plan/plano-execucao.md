@@ -134,6 +134,14 @@ Meta: gate automatizado e stack reprodutível do zero.
 - [ ] Reconciliar `diario-de-fases.md` + `mem_session_summary`
 - **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST persiste + (worker) sincroniza fakes, `/health` OK.
 
+## Fase 8 (intermediária V1 ↔ V2) — Provider LLM real + Produção
+Plano detalhado em [`fase-8-provider-real-e-producao.md`](fase-8-provider-real-e-producao.md). Sequência
+**8a→8d**: (8a) providers **OpenAI + Anthropic** por `.env` (stub segue default/CI) com fallback = degradação
+determinística + circuit-breaker + observabilidade; (8b) **README from-scratch** (pré-requisitos, OTP em
+local, receita de testes, troubleshooting); (8c) mover **`QualificationResult` → `shared/`** (elimina o
+último cross-import `ai→business`, DEC-ORB-021); (8d) **deploy** isolado atrás de reverse proxy compartilhado
+(rede/DB próprios, zero portas no host, TLS no edge). Runbook operacional do servidor fica **fora do repo**.
+
 ## Fora do V1
 Painel admin / RBAC / contas completas (V2 — `roadmap-v2.md`), marketplace multi-seguradora, notificações
 **reais** (email/WhatsApp/SMS), cache semântico de LLM (DEC-ORB-029), embedder real leve.
