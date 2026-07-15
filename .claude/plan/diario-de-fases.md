@@ -572,3 +572,21 @@ persistidos (F5b/`integration_events`, DEC-ORB-044); faltava a **projeção de l
 404, descoberta, escaping HTML, gate-off). **Smoke real** (seed + container): a jornada devolve 1 lead, 8
 mensagens, cotação **R$ 1.200,00**, outbox toda `done` e eventos `crm_sync → ads_conversion×2 → notify_otp →
 crm_price_quote`; HTML 200 `text/html` com a timeline e **zero `<script>` de conteúdo**. ✅
+
+**Revisão adversarial (jornada):** workflow de 13 agentes (4 dimensões + verificação). **0 defeitos no código
+de produção** — o finder de XSS retornou vazio (escaping completo), agregação/IDOR só achou estados
+inalcançáveis (refutados), e o "gate fail-open" foi refutado (o default `local` é a convenção de todo o
+sistema; `prod`⇒fechado, provado por teste). Os **4 confirmados** eram **qualidade de teste** (passavam por
+acidente em torno das invariantes centrais); corrigidos:
+- **gate-off não-vacuo (#1):** o teste semeava banco vazio → a rota de jornada dava 404 por `lead_not_found`
+  mesmo com o gate quebrado. Agora semeia o e-mail consultado (gate quebrado ⇒ 200) e afirma o `detail`
+  neutro `not_found` em ambas as rotas.
+- **canônica discriminante (#2):** âncora coincidia com o fallback (mesmo `created_at`). Agora insere um lead
+  MAIS NOVO em txn posterior → o fallback diverge, e o teste exige `resolved_lead_id != leads[-1]`.
+- **isolamento anti-IDOR (#3):** novo teste com DOIS e-mails, cada um com sessão/cotação/eventos — a jornada
+  de A não contém nenhum id de B (pega a remoção do filtro `lead_id.in_()`).
+- **XSS de todos os campos (#4):** unit `test_eval_render.py` com payload em cada campo, incl. o `_pre_json`
+  (request/response dos eventos) — caminho de escape distinto que não tinha cobertura. **Checagem de mutação**
+  confirma: sem o escape, o `<img` cru apareceria e o assert falharia.
+
+**Verificado (revisão):** `ruff` + `pytest` **106** (58 unit + 48 integração). ✅

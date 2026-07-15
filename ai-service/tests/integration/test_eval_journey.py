@@ -98,9 +98,40 @@ async def test_journey_resolves_canonical_identity_across_duplicate_leads(client
         canon = await AuthService(AuthRepository(session), get_notification()).validate_session(token)
         await session.commit()
 
+    # Um lead duplicado MAIS NOVO (txn posterior → created_at > âncora) para o mesmo e-mail: agora o
+    # fallback "lead mais recente" (leads[-1]) DIVERGE da âncora canônica. A jornada deve resolver a
+    # ÂNCORA (identidade), não o mais novo — assim a regressão para o fallback incondicional seria pega.
+    async with sm() as session:
+        await LeadRepository(session).add_lead(Lead(
+            idempotency_key="cC", name="C", email=email, phone="11999998888",
+            vehicle="Onix", zipcode="01001000", consent=True,
+        ))
+        await session.commit()
+
     j = (await client.get("/eval/leads/journey", params={"email": email})).json()
     assert j["canonical_identity"] is True and j["resolved_lead_id"] == canon
-    assert len(j["leads"]) == 2 and canon in j["lead_ids"]
+    assert len(j["leads"]) == 3 and canon in j["lead_ids"]
+    assert j["resolved_lead_id"] != j["leads"][-1]["id"]  # NÃO é o lead mais novo → identidade > fallback
+
+
+async def test_journey_isolates_two_distinct_emails(client, sm):
+    """Anti-IDOR: dois e-mails com jornadas próprias coexistindo — a jornada de A não pode conter NENHUM
+    id (sessão/cotação/evento/lead) de B (e vice-versa). Guarda contra remover o filtro lead_id.in_()."""
+    lead_a, tok_a = await _auth_lead(sm, email="iso-a@example.com", key="ia")
+    lead_b, tok_b = await _auth_lead(sm, email="iso-b@example.com", key="ib")
+    sid_a = await _create_session(client, tok_a)
+    sid_b = await _create_session(client, tok_b)
+    await _complete_quote_turn(client, tok_a, sid_a)
+    await _complete_quote_turn(client, tok_b, sid_b)
+
+    ja = (await client.get("/eval/leads/journey", params={"email": "iso-a@example.com"})).json()
+    assert {s["session_id"] for s in ja["chat_sessions"]} == {sid_a}   # só a sessão de A
+    assert lead_b not in ja["lead_ids"]                                # nunca o lead de B
+    assert all(q["session_id"] == sid_a for q in ja["quotes"])         # só a cotação de A
+    assert all(e["session_id"] in (sid_a, None) for e in ja["integration_events"])  # eventos de A/lead-scoped
+
+    jb = (await client.get("/eval/leads/journey", params={"email": "iso-b@example.com"})).json()
+    assert {s["session_id"] for s in jb["chat_sessions"]} == {sid_b} and lead_a not in jb["lead_ids"]
 
 
 async def test_journey_unknown_email_is_404(client):
@@ -129,12 +160,19 @@ async def test_journey_html_escapes_user_content(client, sm):
     assert "&lt;script&gt;" in r.text
 
 
-async def test_eval_api_gated_off_returns_404(client, monkeypatch):
-    """Fail-closed (defesa em profundidade): fora de local e sem flag, o gate de rota devolve 404."""
+async def test_eval_api_gated_off_returns_404(client, sm, monkeypatch):
+    """Fail-closed (defesa em profundidade): fora de local e sem flag, o gate de ROTA devolve 404.
+
+    Semeia o e-mail consultado: se o gate da rota de jornada regredisse, ela devolveria 200 (dados reais)
+    em vez de cair em 'lead_not_found' por banco vazio — então o teste não passaria em vazio. E afirma o
+    `detail` NEUTRO 'not_found' (do gate), garantindo que 'lead_not_found' nunca vaze com o gate off."""
+    await _auth_lead(sm, email="gated@example.com", key="gk")
     import app.eval.api.journey as journey_api
 
     monkeypatch.setattr(
         journey_api, "get_settings", lambda: SimpleNamespace(enable_eval_api=False, environment="prod")
     )
-    assert (await client.get("/eval/leads")).status_code == 404
-    assert (await client.get("/eval/leads/journey", params={"email": "x@example.com"})).status_code == 404
+    r_list = await client.get("/eval/leads")
+    r_journey = await client.get("/eval/leads/journey", params={"email": "gated@example.com"})
+    assert r_list.status_code == 404 and r_list.json()["detail"] == "not_found"
+    assert r_journey.status_code == 404 and r_journey.json()["detail"] == "not_found"
