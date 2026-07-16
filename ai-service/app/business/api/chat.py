@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.business.api.deps import require_session_chat
 from app.business.domain.slots import missing_slots, validate_slots
 from app.business.repository.chat_repository import ChatRepository
+from app.business.repository.lead_repository import LeadRepository
 from app.business.service.chat_service import ChatService, SessionNotFound
 from app.business.service.confirm_service import ConfirmService, QuoteRequired
 from app.business.service.quote_service import QuoteService, quote_public
@@ -97,7 +98,13 @@ async def create_session(
     lead_id: str = Depends(require_session_chat),
     session: AsyncSession = Depends(get_chat_session),
 ) -> CreateSessionOut:
-    slots = validate_slots(payload.seed_slots or {})  # E6: valida VALOR, não só a chave
+    # Semeia o slot `vehicle` a partir do lead JÁ persistido (o modal coletou a placa/veículo) → o agente
+    # NÃO pergunta o mesmo dado duas vezes. Valor autoritativo do servidor, não do cliente.
+    seed = dict(payload.seed_slots or {})
+    lead = await LeadRepository(session).get_by_id(lead_id)
+    if lead is not None and lead.vehicle and "vehicle" not in seed:
+        seed["vehicle"] = lead.vehicle
+    slots = validate_slots(seed)  # E6: valida VALOR, não só a chave
     row = await ChatRepository(session).create_session(lead_id=lead_id, slots=slots)
     await session.commit()
     return CreateSessionOut(session_id=row.id, slots=row.slots, missing_slots=missing_slots(row.slots))

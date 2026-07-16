@@ -22,6 +22,10 @@ class LeadRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, lead_id: str) -> LeadRow | None:
+        result = await self.session.execute(select(LeadRow).where(LeadRow.id == lead_id))
+        return result.scalar_one_or_none()
+
     async def add_lead(self, lead: Lead) -> LeadRow:
         row = LeadRow(
             id=lead.id,

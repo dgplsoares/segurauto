@@ -68,6 +68,17 @@ async def test_create_session_and_turn_persist_history(client, sm):
     assert msgs[0]["content"] == "quero cotar meu Onix"  # content do usuário gravado (auditoria)
 
 
+async def test_create_session_seeds_vehicle_from_lead(client, sm):
+    """Fix: o slot `vehicle` é semeado do lead persistido (o modal já coletou a placa/veículo) → o agente
+    NÃO pergunta o mesmo dado de novo (missing_slots já exclui `vehicle`)."""
+    _, token = await _auth_lead(sm)  # lead com vehicle="Onix"
+    r = await client.post("/support/sessions", json={}, headers=_hdr(token))
+    assert r.status_code == 201
+    body = r.json()
+    assert body["slots"].get("vehicle") == "Onix"
+    assert "vehicle" not in body["missing_slots"]
+
+
 async def test_turn_idempotency_replays_not_duplicates(client, sm):
     _, token = await _auth_lead(sm)
     sid = await _create_session(client, token)
