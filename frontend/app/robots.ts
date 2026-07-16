@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-// /robots.txt — homolog remoto NÃO deve ser rastreado por buscadores. Avaliado em runtime (força dynamic)
-// para flipar sem rebuild: ALLOW_INDEXING=true (prod real) libera; qualquer outro valor bloqueia tudo.
+// /robots.txt — conteúdo FICTÍCIO não deve ser rastreado (decisão: NÃO indexar, mesmo em produção).
+// Runtime (force-dynamic) p/ flipar sem rebuild caso um dia mude: ALLOW_INDEXING=true libera; senão bloqueia.
 export const dynamic = "force-dynamic";
 
 export default function robots(): MetadataRoute.Robots {

@@ -79,7 +79,7 @@ services:
     container_name: segurauto-frontend # o reverse proxy compartilhado faz proxy_pass p/ segurauto-frontend:3000
     environment:
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
-      # Indexação por buscadores: OFF no homolog (noindex + robots disallow). Ligar só na prod real.
+      # Indexação por buscadores: OFF por decisão (conteúdo fictício — não indexar, mesmo em prod).
       ALLOW_INDEXING: ${ALLOW_INDEXING:-false}
     depends_on:
       - ai-service

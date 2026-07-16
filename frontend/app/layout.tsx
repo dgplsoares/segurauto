@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 
-// Homolog remoto = NÃO indexar (é um ambiente de teste que funciona como prod). Na prod real, ligue com
-// ALLOW_INDEXING=true para permitir a indexação. Default (sem o flag) = noindex, nofollow.
+// Conteúdo FICTÍCIO (seguradora/dados fake) → NÃO indexar, por decisão, MESMO em produção. O flag
+// ALLOW_INDEXING existe (=true liberaria), mas fica OFF permanente. Default (sem o flag) = noindex, nofollow.
 const allowIndexing = process.env.ALLOW_INDEXING === "true";
 
 export const metadata: Metadata = {
