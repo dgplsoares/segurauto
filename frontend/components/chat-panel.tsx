@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { ChatBubble, TypingBubble, type ChatMessage } from "./chat-bubble";
 import { QuoteCard } from "./quote-card";
 import { useLeadFlow } from "../lib/lead-flow-context";
-import { createChatSession, sendTurn, type QuoteCard as Quote } from "../lib/api";
+import { ApiError, createChatSession, sendTurn, type QuoteCard as Quote } from "../lib/api";
 import { track } from "../lib/analytics";
 import { brand } from "../content/site-content";
 
@@ -16,7 +16,7 @@ const nextId = () => `msg_${idSeq++}`;
 const DEFAULT_PROMPT = "Olá! Quero cotar meu seguro de auto.";
 
 export function ChatPanel() {
-  const { step, initialPrompt, token, close } = useLeadFlow();
+  const { step, initialPrompt, token, close, clearSession } = useLeadFlow();
   const open = step === "chat";
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -42,10 +42,27 @@ export function ChatPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, typing, quote]);
 
+  // Ao PERDER a sessão (logout / 401), zera a conversa local — o próximo usuário não herda a anterior.
+  useEffect(() => {
+    if (token) return;
+    genRef.current++; // invalida continuações em voo
+    sessionRef.current = null;
+    lastPromptRef.current = null;
+    setMessages([]);
+    setQuote(null);
+    setHandoff(false);
+    setConfirmedOutcome(null);
+    setFailed(false);
+  }, [token]);
+
   const onOpen = async () => {
     const prompt = initialPrompt.trim();
     if (!sessionRef.current) {
-      await startSession(prompt || DEFAULT_PROMPT);
+      // Só inicia a conversa quando há um prompt DIGITADO pelo usuário (fluxo signup). Numa reabertura pura
+      // ("Abrir a conversa" / login sem prompt, ou após reload que zera a sessão em memória) o chat abre
+      // vazio — a 1ª mensagem do usuário (handleSend) cria a sessão. Evita disparar um prompt não solicitado
+      // e criar uma sessão órfã (fix do review 3.2).
+      if (prompt) await startSession(prompt);
     } else if (prompt && prompt !== lastPromptRef.current) {
       // Reabriu com um novo prompt → continua a conversa (mesma sessão).
       lastPromptRef.current = prompt;
@@ -66,9 +83,14 @@ export function ChatPanel() {
       if (gen !== genRef.current) return; // superada por outra abertura
       sessionRef.current = session_id;
       await sendTurnGuarded(prompt, gen);
-    } catch {
+    } catch (err) {
       if (gen !== genRef.current) return;
       setTyping(false);
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession(); // sessão expirada/inválida → limpa o token e fecha (a UI volta a "não autenticado")
+        close();
+        return;
+      }
       setFailed(true);
     }
   };
@@ -83,8 +105,13 @@ export function ChatPanel() {
       setMessages((m) => [...m, { id: nextId(), role: "assistant", text: res.reply }]);
       if (res.quote) setQuote(res.quote);
       setHandoff(res.handoff_suggested);
-    } catch {
+    } catch (err) {
       if (gen !== genRef.current) return;
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession();
+        close();
+        return;
+      }
       setMessages((m) => [
         ...m,
         { id: nextId(), role: "assistant", text: "Tive um problema agora. Pode tentar enviar de novo?" },

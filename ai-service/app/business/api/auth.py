@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.adapters.notification import get_notification
-from app.business.api.deps import bearer_token
+from app.business.api.deps import bearer_token, require_session
 from app.business.repository.auth_repository import AuthRepository
 from app.business.service.auth_service import AuthService
 from app.shared.config import get_settings
@@ -52,6 +52,14 @@ async def verify_otp(payload: VerifyOtpIn, session: AsyncSession = Depends(get_s
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="invalid_or_expired_otp")
     return VerifyOtpOut(token=token, expires_in=get_settings().session_idle_ttl_s)
+
+
+@router.get("/session")
+async def session_info(lead_id: str = Depends(require_session)) -> dict:
+    """Valida a sessão do Bearer (200 {lead_id} | 401). Usado pela rehidratação do front (persistência):
+    confirma se o token guardado no localStorage ainda vale antes de renderizar a UI autenticada. Reusa
+    `require_session` (mesma regra de expiração + slide da janela idle)."""
+    return {"lead_id": lead_id}
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

@@ -15,7 +15,7 @@ function scrollToPrompt() {
 }
 
 export function V2Header() {
-  const { startLogin } = useLeadFlow();
+  const { startLogin, token, authReady, logout } = useLeadFlow();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -51,13 +51,24 @@ export function V2Header() {
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Button
-            variant="outline"
-            onClick={startLogin}
-            className="rounded-full border-primary/20 text-foreground hover:bg-secondary"
-          >
-            Entrar
-          </Button>
+          {authReady &&
+            (token ? (
+              <Button
+                variant="outline"
+                onClick={() => void logout()}
+                className="rounded-full border-primary/20 text-foreground hover:bg-secondary"
+              >
+                Sair
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={startLogin}
+                className="rounded-full border-primary/20 text-foreground hover:bg-secondary"
+              >
+                Entrar
+              </Button>
+            ))}
           <Button
             onClick={scrollToPrompt}
             className="rounded-full bg-accent text-accent-foreground hover:brightness-105"
@@ -85,16 +96,30 @@ export function V2Header() {
               </a>
             ))}
             <div className="mt-1 flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setOpen(false);
-                  startLogin();
-                }}
-                className="flex-1 rounded-full"
-              >
-                Entrar
-              </Button>
+              {authReady &&
+                (token ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setOpen(false);
+                      void logout();
+                    }}
+                    className="flex-1 rounded-full"
+                  >
+                    Sair
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setOpen(false);
+                      startLogin();
+                    }}
+                    className="flex-1 rounded-full"
+                  >
+                    Entrar
+                  </Button>
+                ))}
               <Button
                 onClick={() => {
                   setOpen(false);

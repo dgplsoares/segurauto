@@ -9,7 +9,7 @@ import { useLeadFlow } from "../../lib/lead-flow-context";
 import { heroV2 } from "../../content/site-content";
 
 export function V2Hero() {
-  const { startWithPrompt, startLogin } = useLeadFlow();
+  const { startWithPrompt, startLogin, token, authReady, openChat } = useLeadFlow();
 
   return (
     <section className="relative overflow-hidden bg-background">
@@ -56,13 +56,24 @@ export function V2Hero() {
         >
           <PromptBox onSubmit={startWithPrompt} />
           <div className="mt-3 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={startLogin}
-              className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              Já tem cadastro? Entre
-            </button>
+            {authReady &&
+              (token ? (
+                <button
+                  type="button"
+                  onClick={openChat}
+                  className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  Abrir a conversa
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startLogin}
+                  className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  Já tem cadastro? Entre
+                </button>
+              ))}
           </div>
         </motion.div>
 

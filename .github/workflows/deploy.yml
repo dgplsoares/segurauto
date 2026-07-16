@@ -1,0 +1,53 @@
+name: deploy-prod
+
+# Deploy automatizado de PRODUÇÃO (o subdomínio público é o ambiente real — não há homolog separado).
+# Dispara APÓS o workflow "CI" concluir num push na `main`: só um commit VERDE chega ao ambiente remoto.
+# Cobre os dois caminhos que a main recebe: merge de PR E push direto (dev local → main → prod remoto).
+# O `ci.yml` (gate, sem segredos) roda em push/PR; este workflow só encadeia o deploy quando ele passa.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false # NUNCA cancelar um deploy no meio (deixaria o stack meio atualizado)
+
+jobs:
+  deploy:
+    # Só deploya se o CI passou (workflow_run dispara mesmo em falha).
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, segurauto, production]
+    environment: production # segredos/vars vivem no GitHub Environment `production`
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }} # deploya EXATAMENTE o commit que passou no CI
+
+      - name: Escreve o .env a partir do secret (600, sem ecoar)
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          if [ -z "$ENV_FILE" ]; then echo "::error::secret ENV_FILE vazio"; exit 1; fi
+          umask 077
+          printf '%s' "$ENV_FILE" > .env
+          # Sanidade: os segredos ESTÁVEIS têm de existir (o CI nunca os regenera — o banco depende deles).
+          grep -q '^POSTGRES_PASSWORD=' .env && grep -q '^AUTH_PEPPER=' .env \
+            || { echo "::error::ENV_FILE sem POSTGRES_PASSWORD/AUTH_PEPPER"; exit 1; }
+
+      - name: Sobe o stack completo (build local; migrations rodam no entrypoint do ai-service)
+        run: docker compose -f docker-compose.production.yml up -d --build --remove-orphans
+
+      - name: Conecta o reverse proxy compartilhado à rede do SegurAuto (idempotente)
+        # O nome do container do proxy é específico do servidor → vem de uma variável do Environment,
+        # NÃO fica no repo. Se a var não estiver setada, o passo é pulado.
+        if: vars.GATEWAY_CONTAINER != ''
+        env:
+          GW: ${{ vars.GATEWAY_CONTAINER }}
+        run: |
+          docker network inspect segurauto-network -f '{{range .Containers}}{{.Name}} {{end}}' \
+            | grep -qw "$GW" || docker network connect segurauto-network "$GW" || true
+
+      - name: Poda imagens dangling (mantém o disco do host saudável; não toca imagens de terceiros)
+        run: docker image prune -f

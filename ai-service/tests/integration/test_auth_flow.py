@@ -158,6 +158,18 @@ async def test_request_otp_endpoint_neutral_202(client, sm):
     assert r1.json() == r2.json()  # corpo idêntico — não revela existência do e-mail
 
 
+async def test_session_endpoint_validates_token(client, sm):
+    """GET /auth/session: token vivo → 200 {lead_id}; ausente/inválido → 401 (usado na rehidratação do front)."""
+    lead_id = await _make_lead(sm)
+    await _seed_otp(sm, "12345")
+    ok = await client.post("/auth/verify-otp", json={"email": EMAIL, "code": "12345"})
+    token = ok.json()["token"]
+    good = await client.get("/auth/session", headers={"Authorization": f"Bearer {token}"})
+    assert good.status_code == 200 and good.json()["lead_id"] == lead_id
+    assert (await client.get("/auth/session")).status_code == 401  # sem bearer
+    assert (await client.get("/auth/session", headers={"Authorization": "Bearer nope"})).status_code == 401
+
+
 async def test_verify_otp_endpoint(client, sm):
     await _make_lead(sm)
     await _seed_otp(sm, "12345")

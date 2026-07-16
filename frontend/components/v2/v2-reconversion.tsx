@@ -7,7 +7,7 @@ import { useLeadFlow } from "../../lib/lead-flow-context";
 import { reconversion, heroV2 } from "../../content/site-content";
 
 export function V2Reconversion() {
-  const { startWithPrompt, startLogin } = useLeadFlow();
+  const { startWithPrompt, startLogin, token, authReady, openChat } = useLeadFlow();
 
   return (
     <section className="bg-surface-cream py-20 sm:py-28">
@@ -24,13 +24,24 @@ export function V2Reconversion() {
         <Reveal delay={0.1} className="mx-auto mt-8 max-w-xl text-left">
           <PromptBox onSubmit={startWithPrompt} />
           <div className="mt-3 text-center">
-            <button
-              type="button"
-              onClick={startLogin}
-              className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              Já tem cadastro? Entre
-            </button>
+            {authReady &&
+              (token ? (
+                <button
+                  type="button"
+                  onClick={openChat}
+                  className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  Abrir a conversa
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startLogin}
+                  className="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  Já tem cadastro? Entre
+                </button>
+              ))}
           </div>
         </Reveal>
 

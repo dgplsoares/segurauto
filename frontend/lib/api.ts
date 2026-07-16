@@ -80,6 +80,35 @@ export async function verifyOtp(email: string, code: string): Promise<VerifyOtpR
   return (await res.json()) as VerifyOtpResult;
 }
 
+/** Estado da sessão persistida: valid (200) | invalid (401 definitivo) | unknown (5xx/rede — outage). */
+export type SessionState = "valid" | "invalid" | "unknown";
+
+/** GET /api/auth/session — distingue sessão MORTA (401) de falha TRANSITÓRIA (5xx/rede). A rehidratação só
+ * deve apagar o token guardado num 401 definitivo, nunca num blip de rede/deploy (senão o usuário perde uma
+ * sessão ainda válida ao dar reload enquanto o ai-service reinicia). */
+export async function validateSession(token: string): Promise<SessionState> {
+  try {
+    const res = await fetch("/api/auth/session", { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) return "valid";
+    if (res.status === 401) return "invalid";
+    return "unknown"; // 5xx/502 (ai-service reiniciando num deploy) — NÃO é uma sessão morta
+  } catch {
+    return "unknown"; // offline/rede indisponível — não apaga o token
+  }
+}
+
+/** POST /api/auth/logout — revoga a sessão no servidor. Best-effort (não lança). */
+export async function logout(token: string): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    // ignora — o cliente limpa o estado local de qualquer forma
+  }
+}
+
 /** POST /api/support — header Authorization: Bearer. Retorna { answer, handoff_suggested }. */
 export async function sendChatMessage(message: string, token: string): Promise<ChatResult> {
   const res = await fetch("/api/support", {

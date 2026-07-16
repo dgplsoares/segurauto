@@ -50,7 +50,9 @@ services:
     restart: unless-stopped                      # se a tabela ainda não migrou, reinicia até o ai-service migrar
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev # dev local = hot reload (next dev); produção usa o Dockerfile (next start)
     environment:
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
     ports:

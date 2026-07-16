@@ -62,8 +62,15 @@ export function PromptBox({ onSubmit, autoFocus, className }: PromptBoxProps) {
 
   return (
     <div
+      onMouseDown={(e) => {
+        // Toda a área do contorno (gradiente) foca o campo — o alvo de clique é grande, mas o textarea é
+        // pequeno. Exceto: clique no botão (faz só a ação dele) ou no próprio textarea (deixa o caret nativo).
+        if ((e.target as HTMLElement).closest("button, textarea")) return;
+        e.preventDefault(); // evita perder o foco/deseleção ao clicar na área "morta"
+        textareaRef.current?.focus();
+      }}
       className={cn(
-        "group relative flex w-full flex-col justify-between gap-2 rounded-[20px] border-[3px] border-transparent px-4 py-3.5 transition-all duration-300",
+        "group relative flex w-full cursor-text flex-col justify-between gap-2 rounded-[20px] border-[3px] border-transparent px-4 py-3.5 transition-all duration-300",
         "shadow-[0px_8px_5px_rgba(0,0,0,0.1),0px_20px_12.5px_rgba(0,0,0,0.1)]",
         focused && "ring-4 ring-accent/25",
         className,

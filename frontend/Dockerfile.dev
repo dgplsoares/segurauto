@@ -1,0 +1,13 @@
+# Dev-only (hot reload). O docker-compose.yml (dev local) usa este Dockerfile.
+# Produção usa o Dockerfile (build + next start) — ver docker-compose.production.yml.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]

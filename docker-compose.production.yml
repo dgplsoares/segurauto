@@ -9,6 +9,8 @@
 # Uso no servidor:  docker compose -f docker-compose.production.yml up -d --build
 # Secrets/vars vêm de /opt/segurauto/.env (NÃO versionado). Segredos obrigatórios usam ${VAR:?...} (fail-fast).
 
+name: segurauto # projeto FIXO → deploy manual (/opt/segurauto) e via runner atingem o MESMO stack (sem conflito)
+
 services:
   db:
     image: pgvector/pgvector:pg16
