@@ -10,13 +10,28 @@
   🎨 <a href="https://www.figma.com/proto/PYqHA3t5ZoUPHlrnqoF3Na/Untitled?node-id=7-917&t=oo5RD4Y8RH7TQ3Hz-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1"><strong>Protótipo interativo no Figma</strong></a>
 </p>
 
+## 🟢 Ao vivo em produção — Live Test
+
+### ▶ **https://app-segurauto.diogosoares.com.br**
+
+Validado e **rodando em produção**, conectado a **APIs reais**:
+
+- **LLM real (Anthropic).** A conversa de cotação é gerada por um **modelo real da Anthropic**. Como a
+  integração é **agnóstica de provider** (Ports & Adapters), trocar para a **OpenAI** — já **homologada** —
+  é só atualizar as variáveis de ambiente (`LLM_PROVIDER=openai` + `OPENAI_API_KEY`), **sem tocar no código**.
+- **E-mail real.** O envio dos **tokens de autenticação (OTP)** sai por uma **API de e-mail real** (SMTP) —
+  o mesmo adapter genérico serve qualquer provedor, plugável por `.env`.
+- **CI/CD automatizado.** Cada push na `main` passa pelo **CI** (testes) e, verde, dispara o **deploy
+  automático** em produção (GitHub Actions + runner self-hosted).
+
 Captação de leads para **seguros de automóvel**, **chat-first**: da landing page o lead conversa com um
 **consultor de IA** que coleta os dados, gera uma **cotação** e, com a confirmação, dispara as **ações**
 (notificação, conversão, sinal ao CRM) ou o **handoff** para um corretor. Em paralelo, cada lead é
 **qualificado** por IA e **sincronizado** ao CRM da seguradora + plataformas de anúncios.
 
-> **Fictício / demonstração.** CRM e plataformas de anúncios são **fakes** trocáveis por integrações
-> reais via configuração (`.env`), sem alterar o domínio.
+> **Fictício / demonstração.** SegurAuto é uma seguradora **fictícia** (dados fake) — por isso o ambiente
+> público **não é indexado** por buscadores. **LLM (Anthropic) e e-mail são reais**; CRM e plataformas de
+> anúncios seguem **fakes** trocáveis por integrações reais via `.env`, sem alterar o domínio.
 
 ## Arquitetura (resumo)
 
@@ -157,7 +172,8 @@ O plano por fases e o diário ficam em [`.claude/plan/`](.claude/plan).
 **Entregue:** o caminho **chat-first** completo — captura → qualificação por IA → sync CRM/Ads (worker) →
 autenticação (OTP) → **conversa de cotação** → **cotação** → **confirmação → ações** (notificação/conversão/
 CRM + handoff) + atribuição por **Click_ID**, mais a **jornada do lead** para avaliação. Operado por
-env/seed/DB direto (sem painel).
+env/seed/DB direto (sem painel). **Publicado em produção** (Live Test) com **LLM (Anthropic) e e-mail reais**
+e **CI/CD** — push na `main` → CI → **deploy automático**.
 **V2 (futuro):** painel administrativo — CMS da LP, parâmetros de IA, base de conhecimento (upload),
 pipeline de leads (Kanban), usuários/permissões e marketplace multi-seguradora
 (ver [`.claude/plan/roadmap-v2.md`](.claude/plan/roadmap-v2.md)).

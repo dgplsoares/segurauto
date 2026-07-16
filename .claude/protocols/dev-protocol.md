@@ -66,11 +66,16 @@ Registrar no diário quando uma fase foi analisada com subagentes.
 - Sempre `project="orbitus"` explícito em `mem_save`, `mem_search`, `mem_context`.
 - Salvar proativamente: decisões de arquitetura, padrões, bugs com causa raiz, aprendizados.
 
-## 7. Git
+## 7. Git & CI/CD
 
 - Commits pequenos ao fim de cada fase ou bloco, incluindo os docs de processo (`CLAUDE.md` + `.claude/`).
 - Mensagens semânticas que refletem o processo (ex.: `feat(fase-3): qualification_agent + RAG`).
 - Nada destrutivo (`reset --hard`, `push --force`) nem `--no-verify` sem aprovação.
+- **Auditoria antes de publicar:** grep de segredos/tokens e de referências a outros projetos — o repo é
+  público e **neutro**.
+- **CI/CD (V1+):** push na `main` passa pelo **CI** (gate, sem segredos); verde, dispara o **deploy
+  automático em produção** (`deploy.yml`, runner self-hosted). Modelo **dev local → `main` → prod remoto**
+  (sem branch de homolog separada) — detalhes em [`deploy/ci-cd.md`](../../deploy/ci-cd.md).
 
 ## 8. Princípios
 

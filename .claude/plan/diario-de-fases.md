@@ -678,3 +678,40 @@ contrato comum entre `business` (persiste) e `ai` (produz) — e reapontei os 6 
 
 **Verificado:** `grep` confirma **cross-import `ai→business` = 0**; `ruff` + `pytest` **126** (67 unit + 59
 integração). ✅
+
+## Fase 8e — E-mail real (adapter SMTP genérico)
+
+`SmtpNotification` (`aiosmtplib`, lazy) atrás do `NotificationPort`; provider 100% em `.env` (SMTP genérico —
+repo neutro). OTP + canal `email` do notify reais com `USE_FAKE_NOTIFICATIONS=0`; WhatsApp/SMS no-op fake
+(prontos p/ V2). Falha deliberada: `send_otp` engole (202 neutro), `notify(email)` levanta (outbox retenta).
+**Revisão adversarial (4 lentes):** 4 achados corrigidos — **timing side-channel** (OTP inline vazava
+existência de e-mail por latência → movido p/ `BackgroundTasks`), false-green de escape do vehicle, gap
+STARTTLS, false-green de Bcc. **Verificado:** ruff + 139 testes. ✅ DEC-ORB-047.
+
+## Fase 8d — Deploy em produção (o subdomínio público É prod)
+
+Recon do servidor (subagentes): edge = reverse proxy compartilhado (detalhes só no runbook do workspace, fora
+do repo). **Fase 1 (encanamento):** compose de produção isolado (rede/DB próprios, ZERO porta no host),
+Cloudflare **Full** → **Origin Certificate** + `listen 443 ssl`, `network connect` (hot-add) + server block no
+gateway, `/eval/` com basic-auth, **no-index** (meta + robots + **`X-Robots-Tag`** — a Cloudflare injeta um
+managed robots.txt com `Allow: /`; o header do nginx é o que garante). **Fase 2:** flip `.env` → LLM real
+(Anthropic) + e-mail real (SMTP) → OTP no inbox, chat natural. Provider de e-mail trocado **só no `.env`**
+(valida DEC-ORB-047).
+
+## v1.6 + CI/CD + fixes de produção
+
+**v1.6:** persistência de sessão (localStorage, rehidrata + valida `GET /auth/session`, clear-on-401/logout —
+DEC-ORB-048); UI **Entrar↔Sair** + **"Abrir a conversa"** nas 2 seções; **click-to-focus** do hero-prompt.
+**CI/CD** (DEC-ORB-049): `deploy.yml` via `workflow_run` após o CI na `main` → deploy automático; runner
+self-hosted **isolado** do vizinho; `.env` de um secret `ENV_FILE` (POSTGRES_PASSWORD/AUTH_PEPPER **estáveis**).
+**Revisão adversarial:** 2 MEDIUM corrigidos (rehidratação não apaga token em blip de rede — `validateSession`
+3-estados; "Abrir a conversa" não dispara prompt após reload). **Fixes achados no ar:** frontend estava em
+`next dev` → Dockerfile de produção **`node:20-slim`** (glibc; alpine/musl quebra o SWC do `next build`);
+`/eval/` routava p/ o frontend → corrigido p/ `ai-service:8000`. **Verificado:** ruff + **140** testes +
+`next build` + **deploy verde** (f9a8282) + site no ar (200, `x-robots-tag: noindex`, `webpack-hmr` ausente).
+
+## Fecho da V1
+
+Auditoria final: **sem segredos vazados** no histórico de commits (só placeholders de doc `sk-ant-...`);
+**sem referências** a outros projetos. Análise de guardrails **`in|out|mix`** migrada para a V2
+(`roadmap-v2.md`). **V1 concluída e validada em produção** → https://app-segurauto.diogosoares.com.br

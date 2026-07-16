@@ -140,30 +140,15 @@ viram DEC-ORB-046+ ao implementar.
 
 ---
 
-## Análise final (pós-entrega) — guardrails de prompt & postura de segurança
+## Análise final (pós-entrega) — MIGRADA para a V2
 
-> A executar **no fecho da entrega** (após 8e/8d estáveis), como checagem de qualidade e segurança.
+A análise do **classificador de guardrails `in | out | mix`** (a estratégia de "serviço de contexto" de
+**outros projetos de IA** vs. os guardrails atuais + a decisão de adoção) foi **migrada para o roadmap da
+V2** — ver [`roadmap-v2.md`](roadmap-v2.md) → "Guardrails de prompt". (Correção de contexto: as opções são
+`in | out | mix`, não `on`.)
 
-**1. Comparar a estratégia de "serviço de contexto" (classificação `on | out | mix`).** Em **outros
-projetos de IA** adotou-se, dentro da engenharia de prompt, um **serviço de contexto** que **qualifica a
-mensagem do usuário** como `on` (no tema), `out` (fora do tema) ou `mix` (misto) **antes/ao redor** da
-chamada principal ao LLM, condicionando a resposta — um **guardrail contra prompt injection** e desvio de
-escopo. Avaliar se faz sentido trazer para o SegurAuto, **comparando com os guardrails já existentes**:
-
-- **O que já protege hoje (guardrails de saída/estrutura):** o **número da cotação é determinístico**
-  (nunca sai do LLM); funil e handoff **determinísticos**; **degradação determinística** quando o provider
-  real falha (nunca eco de stub/erro cru — DEC-ORB-046); **input capado** (`chat_message_max_len`);
-  **escopo no system prompt** do converse; **PII mascarada** em logs; a IA **não decide** contratar/handoff
-  (confirmação explícita por ação — DEC-ORB-045).
-- **O delta do classificador `on|out|mix` (guardrail de entrada):** uma camada de **classificação de
-  escopo/intenção do input** (pré-LLM) que barra/neutraliza injeção e off-topic **antes** de chegar ao
-  prompt principal — **complementar** (defense-in-depth), não redundante com os guardrails de saída atuais.
-- **Decidir:** adotar — e **como** (classificador determinístico por regras/embeddings? um LLM barato como
-  o `claude-haiku-4-5`? híbrido?) — **ou** não, se o funil determinístico + escopo do system prompt já
-  cobrem o risco no V1 sem pagar a latência/custo de uma chamada extra. Registrar como DEC-ORB-04x.
-
-**2. Checar se o resultado final é satisfatório e seguro** — **revisão adversarial de fecho**: prompt
-injection (o input do chat não altera preço/decisões nem vaza o system prompt), **neutralidade** do repo
-(sem referência a outros projetos/empresas), **PII** (nada cru em log/audit), **segredos** (só em
-`.env`/Secrets), e o fluxo público do homolog (OTP real, eval protegida, no-index) — tudo funcionando como
-prod. Saída: veredito go/no-go para a prod real (ligar `ALLOW_INDEXING=true`).
+A **checagem de segurança de fecho** (prompt injection, PII, segredos, neutralidade, fluxo público) foi
+coberta pelas **revisões adversariais** de cada entrega (journey, F6, 8e, v1.6) + a **auditoria final** do
+histórico de commits (sem segredos vazados; sem referências a outros projetos). Veredito: **V1 concluída e
+validada em produção** (Live Test), com LLM + e-mail reais e CI/CD. `ALLOW_INDEXING` permanece `false` por
+decisão (conteúdo fictício).

@@ -69,6 +69,8 @@ bugs com causa raiz, descobertas e convenções de forma proativa.
 
 ## Escopo V1 vs V2
 
-- **V1 (agora):** captura → qualificação IA → sync CRM/Ads, operado por env/seed/DB direto.
+- **V1 (CONCLUÍDA — em produção):** captura → qualificação IA → conversa de cotação → ações, operada por
+  env/seed/DB direto. **No ar em https://app-segurauto.diogosoares.com.br** com **LLM (Anthropic) e e-mail
+  reais** (OpenAI homologada, troca por `.env`) e **CI/CD** (push na `main` → deploy automático).
 - **V2 (futuro):** painel admin (CMS da LP, config de IA, upload de RAG, Kanban de leads, RBAC).
   A V1 mantém os *seams* para a V2 ser aditiva. Ver `.claude/plan/roadmap-v2.md`.

@@ -29,6 +29,24 @@
 5. **Usuários e permissões (RBAC)** — cadastro, papéis, escopos.
 6. **Integrações** — configurar CRM/Ads (fake↔real), chaves, testar conexão.
 7. **Dashboards** — leads, conversões e custo de LLM sobre as métricas da V1.
+8. **Guardrails de prompt** — classificador de escopo do input `in | out | mix` (análise abaixo).
+
+## Guardrails de prompt — classificador `in | out | mix` (migrado do fecho da V1)
+
+Análise a executar na V2 (registrada originalmente no fecho da V1). Comparar a estratégia de **serviço de
+contexto** usada em **outros projetos de IA** — que **qualifica a mensagem do usuário** como `in` (no tema),
+`out` (fora do tema) ou `mix` (misto) **antes/ao redor** da chamada ao LLM, como **guardrail contra prompt
+injection** e desvio de escopo — com os guardrails que a V1 já tem, e decidir se vale trazer:
+
+- **O que a V1 já protege (saída/estrutura):** o **número da cotação é determinístico** (nunca sai do LLM);
+  funil e handoff determinísticos; **degradação determinística** no fallback (nunca eco de stub/erro cru —
+  DEC-ORB-046); input **capado**; escopo no **system prompt**; PII mascarada; a IA **não decide**
+  contratar/handoff (confirmação explícita — DEC-ORB-045).
+- **O delta do classificador `in|out|mix` (entrada):** camada de classificação de escopo/intenção do input
+  (pré-LLM) que barra/neutraliza injeção e off-topic **antes** do prompt principal — complementar
+  (defense-in-depth), não redundante com os guardrails de saída atuais.
+- **Decidir:** adotar — e **como** (regras/embeddings? um LLM barato tipo `claude-haiku-4-5`? híbrido?) —
+  **ou** não, se o funil determinístico + escopo do system prompt já cobrem o risco. Registrar como DEC-ORB-04x.
 
 ## Onde vive o admin (decisão da V2)
 - **Recomendado:** rotas `/admin/*` no mesmo app Next.js (reuso de build/deploy) + endpoints

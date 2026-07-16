@@ -417,3 +417,34 @@ CRM). Mantemos só o `status` de **processamento interno**. Ver `docs/isolamento
 - **Trade-off:** +1 dep runtime (`aiosmtplib`, lazy) e um adapter, em troca de OTP real no homolog + canal de
   e-mail pronto para o outbox — **sem** acoplar o domínio a nenhum fornecedor (troca por `.env`). A verificação
   de domínio (DKIM/SPF) do remetente é **operacional** (fora do repo); o código roda no fake sem ela.
+
+### DEC-ORB-048 — v1.6: persistência de sessão + UI refletindo auth
+- **Contexto:** o token de sessão vivia só em memória (React state) → perdido em hard reload / fechar a aba.
+  A UI (header, links) não refletia o estado de autenticação.
+- **Escolha:** token persistido em **`localStorage`** (não `sessionStorage` — precisa sobreviver ao fechar/
+  reabrir a aba). Rehidratado no **mount** (SSR-safe, não no initializer → sem mismatch de hidratação),
+  **validado** contra `GET /auth/session` (novo endpoint) antes de mostrar a UI autenticada; teto **absoluto
+  de 12h** checado no cliente; **clear-on-401** + **logout** que revoga no servidor (`/auth/logout`).
+  `validateSession` é **3-estados** (`valid|invalid|unknown`): um 5xx/blip de rede (ex.: ai-service
+  reiniciando num deploy) **NÃO** apaga o token — só um **401 definitivo**. UI: header **Entrar↔Sair**;
+  links **"Já tem cadastro? Entre"↔"Abrir a conversa"** (resume puro, sem novo prompt) nas **2** seções de
+  prompt; `authReady` evita o flash de rótulo; o `ChatPanel` reseta a sessão local ao perder o token.
+- **Trade-off:** `localStorage` é exfiltrável por XSS (mitigado: token curto/30min-idle/12h-absoluto,
+  revogável server-side, clear-on-401, logout real). Cookie `httpOnly` seria mais seguro mas exigiria
+  reformar o BFF (setar/ler cookie + anexar bearer) + CSRF — desproporcional para o V1.
+
+### DEC-ORB-049 — CI/CD: dev local → `main` → prod remoto (deploy automático)
+- **Contexto:** automatizar o deploy. O subdomínio público **é produção** (sem homolog separado; conteúdo
+  fictício → não indexado).
+- **Escolha:** `deploy.yml` disparado por **`workflow_run`** após o workflow **`CI`** concluir com sucesso num
+  push na **`main`** → **só commit verde deploya**, cobrindo merge de PR **e** push direto. **Runner
+  self-hosted** no servidor (precisa do daemon Docker local: build + `up` + `network connect`; conexão só de
+  saída, não expõe SSH), **isolado** do runner do vizinho (repo/conta/usuário/serviço/dir distintos). `.env`
+  do servidor gerado de **UM secret `ENV_FILE`** (Environment `production`, escrito 600) — `POSTGRES_PASSWORD`
+  e `AUTH_PEPPER` são **estáveis** (o CI **nunca** regenera; o volume do banco depende deles; guard fail-fast
+  no workflow). Nome do container do gateway via **variable** (repo neutro). `name: segurauto` fixa o projeto
+  (deploy manual e via runner atingem o **mesmo** stack). Frontend de produção = **`node:20-slim`** (glibc):
+  alpine/musl quebra o binário SWC do `next build`.
+- **Trade-off:** um agente persistente no servidor (usuário no grupo docker ≈ root), mitigado por o deploy
+  disparar **só** em push na `main` (nunca em PR) + CI gated. Build na box compartilhada (carga) em troca de
+  simplicidade (sem registry).

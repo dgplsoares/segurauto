@@ -131,17 +131,26 @@ Meta: gate automatizado e stack reprodutível do zero.
   app.eval.seed` dirige o fluxo real) + `?format=html` (timeline escapada anti-XSS). **Fail-closed** fora de
   `local` (montagem + rota). *Verificado:* +9 testes (7 integração + 2 unit render) e revisão adversarial
   (0 defeitos de produção; 4 fixes de qualidade de teste). ✅
-- [ ] Reconciliar `diario-de-fases.md` + `mem_session_summary`
+- [x] Reconciliar `diario-de-fases.md` + `mem_session_summary`
 - **Verificar:** CI verde no push (só mock, sem segredos); `docker compose up --build` do zero: LP sobe, POST persiste + (worker) sincroniza fakes, `/health` OK.
 
-## Fase 8 (intermediária V1 ↔ V2) — Provider LLM real + Produção
-Plano detalhado em [`fase-8-provider-real-e-producao.md`](fase-8-provider-real-e-producao.md). Sequência
-**8a→8d**: (8a) providers **OpenAI + Anthropic** por `.env` (stub segue default/CI) com fallback = degradação
-determinística + circuit-breaker + observabilidade; (8b) **README from-scratch** (pré-requisitos, OTP em
-local, receita de testes, troubleshooting); (8c) mover **`QualificationResult` → `shared/`** (elimina o
-último cross-import `ai→business`, DEC-ORB-021); (8d) **deploy** isolado atrás de reverse proxy compartilhado
-(rede/DB próprios, zero portas no host, TLS no edge). Runbook operacional do servidor fica **fora do repo**.
+## Fase 8 (intermediária V1 ↔ V2) — Provider LLM real + Produção — ✅ CONCLUÍDA
+Plano detalhado em [`fase-8-provider-real-e-producao.md`](fase-8-provider-real-e-producao.md). Entregue:
+- [x] **8a** providers **OpenAI + Anthropic** por `.env` (stub segue default/CI); fallback = degradação
+  determinística + circuit-breaker + observabilidade (DEC-ORB-046).
+- [x] **8b** README from-scratch; **8c** `QualificationResult → shared/` (cross-import `ai→business` = 0).
+- [x] **8e** **e-mail real** via adapter SMTP genérico atrás do `NotificationPort` (provider trocável por
+  `.env`; OTP + canal email do notify reais) — DEC-ORB-047.
+- [x] **8d** **deploy em produção** (o subdomínio público É prod): stack isolada atrás de reverse proxy
+  compartilhado (rede/DB próprios, zero porta no host, TLS no edge, no-index permanente). Runbook do servidor
+  **fora do repo**.
+- [x] **v1.6** persistência de sessão (localStorage) + UI de auth (Entrar↔Sair, Abrir a conversa) +
+  click-to-focus do hero-prompt; **CI/CD** (push na `main` → CI → deploy automático — DEC-ORB-048/049).
+
+**Estado: LLM (Anthropic) + e-mail reais no ar; OpenAI homologada (troca por `.env`). V1 validada em
+produção → https://app-segurauto.diogosoares.com.br**. A análise de guardrails `in|out|mix` foi **migrada
+para a V2** (`roadmap-v2.md`).
 
 ## Fora do V1
-Painel admin / RBAC / contas completas (V2 — `roadmap-v2.md`), marketplace multi-seguradora, notificações
-**reais** (email/WhatsApp/SMS), cache semântico de LLM (DEC-ORB-029), embedder real leve.
+Painel admin / RBAC / contas completas (V2 — `roadmap-v2.md`), marketplace multi-seguradora, **WhatsApp/SMS
+reais** (o **e-mail já é real** na V1), cache semântico de LLM (DEC-ORB-029), embedder real leve.
