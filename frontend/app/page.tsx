@@ -8,7 +8,6 @@ import { Faq } from "@/components/faq";
 import { ChatPanel } from "@/components/chat-panel";
 import { OtpModal } from "@/components/otp-modal";
 import { PreSignupModal } from "@/components/pre-signup-modal";
-import { SupportWidget } from "@/components/support-widget";
 import { V2CoverageTabs } from "@/components/v2/v2-coverage-tabs";
 import { V2Deep } from "@/components/v2/v2-deep";
 import { V2Features } from "@/components/v2/v2-features";
@@ -48,9 +47,6 @@ export default function Home() {
         <PreSignupModal />
         <OtpModal />
         <ChatPanel />
-
-        {/* Suporte flutuante */}
-        <SupportWidget />
       </div>
     </LeadFlowProvider>
   );
